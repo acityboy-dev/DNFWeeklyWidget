@@ -99,6 +99,7 @@ public partial class MainWindow : Window
 	private readonly DundamClient _dundam = new();
 	private readonly DispatcherTimer _timer = new();
 	private readonly SettingsPersistenceService _settingsPersistence;
+	private readonly PresetService _presetService;
 	private readonly Forms.NotifyIcon _trayIcon = new();
 	private readonly ManualWindowDrag _windowDrag;
 	private System.Windows.Point? _dragStartPoint;
@@ -128,12 +129,11 @@ public partial class MainWindow : Window
 	private bool _isMutatingPresets;
 	private List<CharacterRow> _allCharacterRows = new();
 	private readonly ObservableCollection<CharacterRow> _characterRows = new();
-	private readonly Dictionary<string, ObservableCollection<CharacterRow>> _presetRowCollections = new();
 	private int _characterRenderGeneration;
 	private int _busyOverlayDepth;
 	private int _loadingOverlayGeneration;
 	private double _lastCardWidth;
-	private CardEntryPreset CurrentPreset => _settings.ActivePreset;
+	private CardEntryPreset CurrentPreset => _presetService.CurrentPreset;
 
 	public MainWindow()
 	{
@@ -141,7 +141,7 @@ public partial class MainWindow : Window
 		_windowDrag = new ManualWindowDrag(this);
 		_settings = AppSettings.Load();
 		_settings.AutoSortByFame = false;
-		_settings.EnsurePresets();
+		_presetService = new PresetService(_settings);
 		_settingsPersistence = new SettingsPersistenceService(_settings, () => CurrentPreset);
 		RestoreWindowPlacement();
 		_themeOverrideIsLight = ThemeModeToOverride(_settings.ThemeMode);
@@ -743,8 +743,7 @@ public partial class MainWindow : Window
 		if (dialog.ShowDialog() != true)
 			return;
 
-		CurrentPreset.Characters.Clear();
-		CurrentPreset.CachedCards.Clear();
+		_presetService.ClearCurrentPreset();
 		_allCharacterRows.Clear();
 		RenderCharacterRows();
 		ClearIncompleteContentSummary();
@@ -820,8 +819,7 @@ public partial class MainWindow : Window
 		}
 
 		PersistCurrentPresetFromRows();
-		_settings.ActivePresetId = preset.Id;
-		_settings.EnsurePresets();
+		_presetService.SelectPreset(preset.Id);
 		var selectedPresetId = preset.Id;
 		ClearIncompleteContentSummary();
 		if (!await RestoreActivePresetRowsAsync(deferSummary: true, batchRender: true))
@@ -850,17 +848,8 @@ public partial class MainWindow : Window
 		{
 			PersistCurrentPresetFromRows();
 			var nextNumber = _settings.Presets.Count + 1;
-			var preset = new CardEntryPreset
-			{
-				Id = Guid.NewGuid().ToString("N"),
-				Name = $"프리셋 {nextNumber}"
-			};
-
-			_settings.Presets.Add(preset);
-			_settings.ActivePresetId = preset.Id;
-			_settings.EnsurePresets();
+			var preset = _presetService.AddPreset($"프리셋 {nextNumber}");
 			_allCharacterRows.Clear();
-			_presetRowCollections[preset.Id] = new ObservableCollection<CharacterRow>();
 			await RenderCharacterRowsAsync(batch: true);
 			ClearIncompleteContentSummary();
 			UpdatePresetList();
@@ -888,15 +877,11 @@ public partial class MainWindow : Window
 		try
 		{
 			var preset = PresetListBox.SelectedItem as CardEntryPreset ?? CurrentPreset;
-			var removeIndex = _settings.Presets.FindIndex(x => x.Id == preset.Id);
-			if (removeIndex < 0)
+			if (_settings.Presets.All(item => item.Id != preset.Id))
 				return;
 
-			_settings.Presets.RemoveAt(removeIndex);
-			if (_settings.ActivePresetId == preset.Id)
+			if (_presetService.RemovePreset(preset))
 			{
-				var nextIndex = Math.Clamp(removeIndex, 0, _settings.Presets.Count - 1);
-				_settings.ActivePresetId = _settings.Presets[nextIndex].Id;
 				ClearIncompleteContentSummary();
 				if (!await RestoreActivePresetRowsAsync(deferSummary: true, batchRender: true))
 				{
@@ -904,9 +889,6 @@ public partial class MainWindow : Window
 					await RenderCharacterRowsAsync(batch: true);
 				}
 			}
-			_presetRowCollections.Remove(preset.Id);
-
-			_settings.EnsurePresets();
 			UpdatePresetList();
 			_settingsPersistence.ScheduleSave();
 			StatusText.Text = $"{preset.Name} 프리셋을 삭제했습니다.";
@@ -1026,7 +1008,7 @@ public partial class MainWindow : Window
 		CharacterScrollViewer.Opacity = 1;
 		IncompleteSummaryPanel.Opacity = 1;
 
-		if (_presetRowCollections.TryGetValue(CurrentPreset.Id, out var collection))
+		if (_presetService.TryGetRows(CurrentPreset.Id, out var collection))
 		{
 			_allCharacterRows = collection
 				.Where(x => !x.IsDropIndicator)
@@ -1046,21 +1028,7 @@ public partial class MainWindow : Window
 		if (_allCharacterRows.Count == 0)
 			return;
 
-		CurrentPreset.Characters = _allCharacterRows
-			.Where(x => !x.IsDropIndicator && !string.IsNullOrWhiteSpace(x.CharacterName))
-			.Select(x => new SavedCharacter
-			{
-				ServerId = x.ServerId,
-				CharacterName = x.CharacterName
-			})
-			.ToList();
-		CurrentPreset.CachedCards = _allCharacterRows
-			.Where(x => !x.IsDropIndicator && !string.IsNullOrWhiteSpace(x.CharacterName))
-			.Select(x => x.ToCache())
-			.ToList();
-		_presetRowCollections[CurrentPreset.Id] = new ObservableCollection<CharacterRow>(_allCharacterRows);
-		_settings.Characters = CurrentPreset.Characters;
-		_settings.CachedCards = CurrentPreset.CachedCards;
+		_presetService.PersistRows(_allCharacterRows);
 	}
 
 	private void UpdateToolbarOptionButtons()
@@ -1234,13 +1202,7 @@ public partial class MainWindow : Window
 				return;
 			}
 
-			CurrentPreset.Characters = characters
-				.Select(x => new SavedCharacter
-				{
-					ServerId = x.ServerId,
-					CharacterName = x.CharacterName
-				})
-				.ToList();
+			_presetService.ReplaceCurrentCharacters(characters);
 
 			ApplyInputToSettings();
 			SaveSettings();
@@ -2021,28 +1983,13 @@ public partial class MainWindow : Window
 
 	private void SaveCardCache(IEnumerable<CharacterRow> rows)
 	{
-		CurrentPreset.CachedCards = rows
-			.Where(x => !x.IsDropIndicator && !string.IsNullOrWhiteSpace(x.CharacterName))
-			.Select(x => x.ToCache())
-			.ToList();
-		_presetRowCollections[CurrentPreset.Id] = new ObservableCollection<CharacterRow>(
-			rows.Where(x => !x.IsDropIndicator));
-		_settings.Characters = CurrentPreset.Characters;
-		_settings.CachedCards = CurrentPreset.CachedCards;
+		_presetService.UpdateCachedCards(rows);
 		SaveSettings();
 	}
 
 	private void SyncSettingsCharactersFromRows(IEnumerable<CharacterRow> rows)
 	{
-		CurrentPreset.Characters = rows
-			.Where(x => !x.IsDropIndicator && !string.IsNullOrWhiteSpace(x.CharacterName))
-			.Select(x => new SavedCharacter
-			{
-				ServerId = x.ServerId,
-				CharacterName = x.CharacterName
-			})
-			.ToList();
-		_settings.Characters = CurrentPreset.Characters;
+		_presetService.UpdateCharacters(rows);
 	}
 
 	private void SetCharacterRows(IEnumerable<CharacterRow> rows)
@@ -2058,7 +2005,7 @@ public partial class MainWindow : Window
 			.Where(x => !x.IsDropIndicator)
 			.ToList();
 		SortAllCharacterRowsIfNeeded();
-		_presetRowCollections[CurrentPreset.Id] = new ObservableCollection<CharacterRow>(_allCharacterRows);
+		_presetService.SetRows(CurrentPreset.Id, _allCharacterRows);
 		await RenderCharacterRowsAsync(batchRender);
 	}
 
@@ -2654,19 +2601,8 @@ public partial class MainWindow : Window
 		UpdateCurrentCardWidths();
 		await AnimateCharacterReorderHintAsync(movingRow);
 
-		CurrentPreset.Characters = orderedRows
-			.Select(x => new SavedCharacter
-			{
-				ServerId = x.ServerId,
-				CharacterName = x.CharacterName
-			})
-			.ToList();
-		CurrentPreset.CachedCards = orderedRows
-			.Select(x => x.ToCache())
-			.ToList();
-		_presetRowCollections[CurrentPreset.Id] = collection;
-		_settings.Characters = CurrentPreset.Characters;
-		_settings.CachedCards = CurrentPreset.CachedCards;
+		_presetService.PersistRows(orderedRows);
+		_presetService.SetRows(CurrentPreset.Id, collection);
 		MarkUserDataDirty();
 		StatusText.Text = "카드 순서를 변경했습니다.";
 	}
@@ -2730,18 +2666,7 @@ public partial class MainWindow : Window
 
 		await AnimateCharacterRemovalAsync(row);
 
-		CurrentPreset.Characters = orderedRows
-			.Select(x => new SavedCharacter
-			{
-				ServerId = x.ServerId,
-				CharacterName = x.CharacterName
-			})
-			.ToList();
-		CurrentPreset.CachedCards = orderedRows
-			.Select(x => x.ToCache())
-			.ToList();
-		_settings.Characters = CurrentPreset.Characters;
-		_settings.CachedCards = CurrentPreset.CachedCards;
+		_presetService.PersistRows(orderedRows);
 		MarkUserDataDirty();
 
 		ApplyWeeklyContentSettingsToRows(orderedRows);
@@ -2757,7 +2682,7 @@ public partial class MainWindow : Window
 			RenderCharacterRows();
 		}
 
-		_presetRowCollections[CurrentPreset.Id] = new ObservableCollection<CharacterRow>(_allCharacterRows);
+		_presetService.SetRows(CurrentPreset.Id, _allCharacterRows);
 		UpdateCurrentCardWidths();
 		StatusText.Text = LogText.CharacterRemoved(row.CharacterName);
 	}
