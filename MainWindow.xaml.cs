@@ -2,7 +2,6 @@
 using System.IO;
 using System.Collections.ObjectModel;
 using System.Globalization;
-using System.Net.Http;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -95,11 +94,11 @@ public partial class MainWindow : Window
 	private sealed record VisualRow(List<ItemLayout> Items, double Top, double Bottom, double OverlayTop, double OverlayBottom);
 
 	private readonly AppSettings _settings;
-	private readonly NeopleApiClient _api = new();
 	private readonly DundamClient _dundam = new();
 	private readonly DispatcherTimer _timer = new();
 	private readonly SettingsPersistenceService _settingsPersistence;
 	private readonly PresetService _presetService;
+	private readonly CharacterCardService _characterCardService;
 	private readonly Forms.NotifyIcon _trayIcon = new();
 	private readonly ManualWindowDrag _windowDrag;
 	private System.Windows.Point? _dragStartPoint;
@@ -143,6 +142,7 @@ public partial class MainWindow : Window
 		_settings.AutoSortByFame = false;
 		_presetService = new PresetService(_settings);
 		_settingsPersistence = new SettingsPersistenceService(_settings, () => CurrentPreset);
+		_characterCardService = new CharacterCardService(_settings);
 		RestoreWindowPlacement();
 		_themeOverrideIsLight = ThemeModeToOverride(_settings.ThemeMode);
 		ApplyCurrentTheme();
@@ -1301,7 +1301,7 @@ public partial class MainWindow : Window
 			ShowLoadingOverlay(LogText.AddCharacterLoading(saved.CharacterName));
 
 			var cardWidth = CalculateCardWidth();
-			var row = await CreateCharacterRowAsync(saved, cardWidth);
+			var row = await _characterCardService.CreateRowAsync(saved, cardWidth);
 			var rows = GetOrderedCharacterRows();
 			rows.RemoveAll(x =>
 				string.Equals(x.ServerId, row.ServerId, StringComparison.OrdinalIgnoreCase) &&
@@ -1325,47 +1325,6 @@ public partial class MainWindow : Window
 			await HideLoadingOverlayAsync();
 			_isRefreshing = false;
 		}
-	}
-
-	private async Task<CharacterRow> CreateCharacterRowAsync(SavedCharacter saved, double cardWidth)
-	{
-		var serverId = string.IsNullOrWhiteSpace(saved.ServerId) ? _settings.ServerId : saved.ServerId;
-		var found = await _api.SearchCharactersByCharacterNameAsync(
-			serverId,
-			saved.CharacterName,
-			_settings.ApiKey);
-
-		var character = found.FirstOrDefault();
-		if (character is null)
-			return CharacterRow.NotFound(serverId, saved.CharacterName, cardWidth, _settings.CharacterImageMode);
-
-		var detail = await _api.GetCharacterAsync(serverId, character.CharacterId, _settings.ApiKey);
-		var weeklyLootStatus = await _api.GetWeeklyLootStatusAsync(serverId, character.CharacterId, _settings.ApiKey);
-		var weeklyStatus = await _api.GetWeeklyStatusAsync(
-			serverId,
-			character.CharacterId,
-			_settings.ApiKey);
-		var imageMode = CharacterRow.NormalizeImageMode(_settings.CharacterImageMode);
-		var imageSource = imageMode == "hidden"
-			? GetExistingCharacterImageSource(serverId, character.CharacterId)
-			: await GetCachedCharacterImageSourceAsync(serverId, character.CharacterId);
-
-		return new CharacterRow
-		{
-			CharacterName = character.CharacterName,
-			ServerId = serverId,
-			ServerName = ServerOptions.GetName(serverId),
-			CardWidth = cardWidth,
-			ImageMode = imageMode,
-			ImageUrl = imageSource,
-			JobName = detail.JobName,
-			Fame = detail.Fame,
-			JobSummary = detail.JobGrowName,
-			CompactImageMargin = CharacterRow.GetCompactImageMargin(detail.JobName, detail.JobGrowName),
-			FameSummary = $"명성 {detail.Fame:N0}",
-			BaseSummary = weeklyLootStatus.ToSummaryText(),
-			WeeklyStatus = weeklyStatus
-		};
 	}
 
 	private async Task RefreshAsync()
@@ -1397,53 +1356,8 @@ public partial class MainWindow : Window
 
 			StatusText.Text = LogText.RefreshingCharacters(CurrentPreset.Characters.Count);
 
-			var rows = new List<CharacterRow>();
 			var cardWidth = CalculateCardWidth();
-
-			foreach (var saved in CurrentPreset.Characters)
-			{
-				var serverId = string.IsNullOrWhiteSpace(saved.ServerId) ? _settings.ServerId : saved.ServerId;
-				var found = await _api.SearchCharactersByCharacterNameAsync(
-					serverId,
-					saved.CharacterName,
-					_settings.ApiKey);
-
-				var character = found.FirstOrDefault();
-				if (character is null)
-				{
-					rows.Add(CharacterRow.NotFound(serverId, saved.CharacterName, cardWidth, _settings.CharacterImageMode));
-					continue;
-				}
-
-				var detail = await _api.GetCharacterAsync(serverId, character.CharacterId, _settings.ApiKey);
-				var weeklyLootStatus = await _api.GetWeeklyLootStatusAsync(serverId, character.CharacterId, _settings.ApiKey);
-				var weeklyStatus = await _api.GetWeeklyStatusAsync(
-					serverId,
-					character.CharacterId,
-					_settings.ApiKey);
-				var imageMode = CharacterRow.NormalizeImageMode(_settings.CharacterImageMode);
-				var imageSource = imageMode == "hidden"
-					? GetExistingCharacterImageSource(serverId, character.CharacterId)
-					: await GetCachedCharacterImageSourceAsync(serverId, character.CharacterId);
-
-				var row = new CharacterRow
-				{
-					CharacterName = character.CharacterName,
-					ServerId = serverId,
-					ServerName = ServerOptions.GetName(serverId),
-					CardWidth = cardWidth,
-					ImageMode = imageMode,
-					ImageUrl = imageSource,
-					JobName = detail.JobName,
-					Fame = detail.Fame,
-					JobSummary = detail.JobGrowName,
-					CompactImageMargin = CharacterRow.GetCompactImageMargin(detail.JobName, detail.JobGrowName),
-					FameSummary = $"명성 {detail.Fame:N0}",
-					BaseSummary = weeklyLootStatus.ToSummaryText(),
-					WeeklyStatus = weeklyStatus
-				};
-				rows.Add(row);
-			}
+			var rows = await _characterCardService.CreateRowsAsync(CurrentPreset.Characters, cardWidth);
 
 			ApplyWeeklyContentSettingsToRows(rows);
 
@@ -1912,62 +1826,6 @@ public partial class MainWindow : Window
 		return _allCharacterRows.Any(x => !x.IsDropIndicator) ||
 			CharacterList.ItemsSource is IEnumerable<CharacterRow> rows &&
 			rows.Any(x => !x.IsDropIndicator);
-	}
-
-	private async Task<string> GetCachedCharacterImageSourceAsync(string serverId, string characterId)
-	{
-		var imageUrl = _api.GetCharacterImageUrl(serverId, characterId);
-		if (!_settings.EnableUserDataCache)
-			return imageUrl;
-
-		var imagePath = GetCachedCharacterImagePath(serverId, characterId);
-		var fallback = File.Exists(imagePath) ? imagePath : imageUrl;
-
-		try
-		{
-			await _api.CacheCharacterImageAsync(serverId, characterId, imagePath);
-			return imagePath;
-		}
-		catch (HttpRequestException)
-		{
-			return fallback;
-		}
-		catch (IOException)
-		{
-			return fallback;
-		}
-		catch (UnauthorizedAccessException)
-		{
-			return fallback;
-		}
-		catch (TaskCanceledException)
-		{
-			return fallback;
-		}
-	}
-
-	private string GetExistingCharacterImageSource(string serverId, string characterId)
-	{
-		var imagePath = GetCachedCharacterImagePath(serverId, characterId);
-		return File.Exists(imagePath)
-			? imagePath
-			: _api.GetCharacterImageUrl(serverId, characterId);
-	}
-
-	private static string GetCachedCharacterImagePath(string serverId, string characterId)
-	{
-		var fileName = $"{SanitizeCacheFileName(serverId)}_{SanitizeCacheFileName(characterId)}.png";
-		return Path.Combine(AppSettings.ImageCacheDir, fileName);
-	}
-
-	private static string SanitizeCacheFileName(string value)
-	{
-		var invalidChars = Path.GetInvalidFileNameChars();
-		var chars = value
-			.Select(ch => invalidChars.Contains(ch) ? '_' : ch)
-			.ToArray();
-
-		return new string(chars);
 	}
 
 	private void SaveCurrentCardCache()
