@@ -1076,36 +1076,37 @@ public partial class MainWindow : Window
 
 	private void ApplyHeaderButtonLayout()
 	{
-		var useCompactButtons = _settings.IsCompactMode || ActualWidth <= CompactHeaderWidthThreshold;
+		var isCompactMode = _settings.IsCompactMode;
+		var useCompactOptionButtons = isCompactMode || ActualWidth <= CompactHeaderWidthThreshold;
 
-		RefreshNowButton.Width = useCompactButtons ? 28 : 88;
-		RefreshNowButton.Height = useCompactButtons ? 26 : 34;
-		RefreshNowButton.FontSize = useCompactButtons ? 11 : 14;
+		RefreshNowButton.Width = isCompactMode ? 28 : 88;
+		RefreshNowButton.Height = isCompactMode ? 26 : 34;
+		RefreshNowButton.FontSize = isCompactMode ? 11 : 14;
 		RefreshNowButton.Margin = new Thickness(0, 0, 8, 0);
-		RefreshNowButton.Padding = useCompactButtons ? new Thickness(0) : new Thickness(10, 4, 10, 4);
-		RefreshNowText.Visibility = useCompactButtons ? Visibility.Collapsed : Visibility.Visible;
-		RefreshNowIcon.Visibility = useCompactButtons ? Visibility.Visible : Visibility.Collapsed;
+		RefreshNowButton.Padding = isCompactMode ? new Thickness(0) : new Thickness(10, 4, 10, 4);
+		RefreshNowText.Visibility = isCompactMode ? Visibility.Collapsed : Visibility.Visible;
+		RefreshNowIcon.Visibility = isCompactMode ? Visibility.Visible : Visibility.Collapsed;
 
-		SettingsButton.Width = useCompactButtons ? 28 : 68;
-		SettingsButton.Height = useCompactButtons ? 26 : 34;
-		SettingsButton.FontSize = useCompactButtons ? 12 : 14;
+		SettingsButton.Width = isCompactMode ? 28 : 68;
+		SettingsButton.Height = isCompactMode ? 26 : 34;
+		SettingsButton.FontSize = isCompactMode ? 12 : 14;
 		SettingsButton.Margin = new Thickness(0, 0, 8, 0);
-		SettingsButton.Padding = useCompactButtons ? new Thickness(0) : new Thickness(10, 4, 10, 4);
-		SettingsText.Visibility = useCompactButtons ? Visibility.Collapsed : Visibility.Visible;
-		SettingsIcon.Visibility = useCompactButtons ? Visibility.Visible : Visibility.Collapsed;
+		SettingsButton.Padding = isCompactMode ? new Thickness(0) : new Thickness(10, 4, 10, 4);
+		SettingsText.Visibility = isCompactMode ? Visibility.Collapsed : Visibility.Visible;
+		SettingsIcon.Visibility = isCompactMode ? Visibility.Visible : Visibility.Collapsed;
 
-		CompactModeButton.Width = useCompactButtons ? 28 : 36;
-		CompactModeButton.Height = useCompactButtons ? 26 : 34;
+		CompactModeButton.Width = isCompactMode ? 28 : 36;
+		CompactModeButton.Height = isCompactMode ? 26 : 34;
 		CompactModeButton.Margin = new Thickness(0, 0, 8, 0);
-		CompactModeIcon.Width = useCompactButtons ? 13 : 16;
-		CompactModeIcon.Height = useCompactButtons ? 13 : 16;
+		CompactModeIcon.Width = isCompactMode ? 13 : 16;
+		CompactModeIcon.Height = isCompactMode ? 13 : 16;
 
-		CloseButton.Width = useCompactButtons ? 28 : 36;
-		CloseButton.Height = useCompactButtons ? 26 : 34;
-		CloseIcon.Width = useCompactButtons ? 13 : 16;
-		CloseIcon.Height = useCompactButtons ? 13 : 16;
+		CloseButton.Width = isCompactMode ? 28 : 36;
+		CloseButton.Height = isCompactMode ? 26 : 34;
+		CloseIcon.Width = isCompactMode ? 13 : 16;
+		CloseIcon.Height = isCompactMode ? 13 : 16;
 
-		UpdateToolbarOptionButtons(useCompactButtons);
+		UpdateToolbarOptionButtons(useCompactOptionButtons);
 	}
 
 	private void ApplyHudPanelCompactState(bool isCompact, bool animate)
