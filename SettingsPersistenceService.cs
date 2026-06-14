@@ -100,6 +100,7 @@ internal sealed class SettingsPersistenceService
 			LowPerformanceMode = _settings.LowPerformanceMode,
 			AutoRefreshOnStartup = _settings.AutoRefreshOnStartup,
 			AutoRefreshIntervalMinutes = _settings.AutoRefreshIntervalMinutes,
+			ShowInTaskbar = _settings.ShowInTaskbar,
 			EnableUserDataCache = _settings.EnableUserDataCache,
 			Columns = _settings.Columns,
 			WindowLeft = _settings.WindowLeft,

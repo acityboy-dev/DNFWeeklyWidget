@@ -21,6 +21,7 @@ public class AppSettings
 	public bool LowPerformanceMode { get; set; }
 	public bool AutoRefreshOnStartup { get; set; } = true;
 	public int AutoRefreshIntervalMinutes { get; set; } = 30;
+	public bool ShowInTaskbar { get; set; }
 	public bool EnableUserDataCache { get; set; } = true;
 	public int Columns { get; set; } = 2;
 	public double? WindowLeft { get; set; }

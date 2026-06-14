@@ -122,6 +122,7 @@ public partial class MainWindow : Window
 	private Forms.ToolStripMenuItem? _darkThemeMenuItem;
 	private bool _isRefreshing;
 	private bool _isExitRequested;
+	private bool _hasShownTrayRestoreHint;
 	private bool _isRestoringWindowPlacement;
 	private bool _isSummaryPanelExpanded = true;
 	private bool _isUpdatingPresetList;
@@ -144,6 +145,7 @@ public partial class MainWindow : Window
 		_presetService = new PresetService(_settings);
 		_settingsPersistence = new SettingsPersistenceService(_settings, () => CurrentPreset);
 		_characterCardService = new CharacterCardService(_settings);
+		ShowInTaskbar = _settings.ShowInTaskbar;
 		RestoreWindowPlacement();
 		_themeOverrideIsLight = ThemeModeToOverride(_settings.ThemeMode);
 		ApplyCurrentTheme();
@@ -336,6 +338,7 @@ public partial class MainWindow : Window
 			SaveWindowPlacement();
 			e.Cancel = true;
 			Hide();
+			ShowTrayRestoreHint();
 			return;
 		}
 
@@ -1244,6 +1247,7 @@ public partial class MainWindow : Window
 			_settings.Columns,
 			_settings.AutoRefreshOnStartup,
 			_settings.AutoRefreshIntervalMinutes,
+			_settings.ShowInTaskbar,
 			_settings.EnableUserDataCache,
 			CurrentIsLightTheme,
 			PreviewThemeMode,
@@ -1273,7 +1277,9 @@ public partial class MainWindow : Window
 		_settings.Columns = settingsWindow.Columns;
 		_settings.AutoRefreshOnStartup = settingsWindow.AutoRefreshOnStartup;
 		_settings.AutoRefreshIntervalMinutes = ClampAutoRefreshInterval(settingsWindow.AutoRefreshIntervalMinutes);
+		_settings.ShowInTaskbar = settingsWindow.ShowInTaskbar;
 		_settings.EnableUserDataCache = settingsWindow.EnableUserDataCache;
+		ShowInTaskbar = _settings.ShowInTaskbar;
 		SaveSettings(allowWhenDisabled: true);
 		ApplyAutoRefreshInterval();
 		PreviewThemeMode(_settings.ThemeMode);
@@ -2329,6 +2335,19 @@ public partial class MainWindow : Window
 	private void Close_Click(object sender, RoutedEventArgs e)
 	{
 		Hide();
+		ShowTrayRestoreHint();
+	}
+
+	private void ShowTrayRestoreHint()
+	{
+		if (_hasShownTrayRestoreHint || !_trayIcon.Visible)
+			return;
+
+		_hasShownTrayRestoreHint = true;
+		_trayIcon.BalloonTipTitle = "DNF Weekly Widget";
+		_trayIcon.BalloonTipText = "트레이 아이콘을 더블 클릭하면 위젯을 다시 열 수 있습니다.";
+		_trayIcon.BalloonTipIcon = Forms.ToolTipIcon.Info;
+		_trayIcon.ShowBalloonTip(4000);
 	}
 
 	private void ConfigureTrayIcon()

@@ -38,6 +38,7 @@ public partial class SettingsWindow : Window
 		int columns,
 		bool autoRefreshOnStartup,
 		int autoRefreshIntervalMinutes,
+		bool showInTaskbar,
 		bool enableUserDataCache,
 		bool isLightTheme,
 		Action<string>? previewThemeMode = null,
@@ -82,6 +83,7 @@ public partial class SettingsWindow : Window
 		ColumnsSlider.Value = ClampColumns(columns);
 		AutoRefreshOnStartupBox.IsChecked = autoRefreshOnStartup;
 		AutoRefreshIntervalBox.Text = ClampAutoRefreshInterval(autoRefreshIntervalMinutes).ToString();
+		ShowInTaskbarBox.IsChecked = showInTaskbar;
 		EnableUserDataCacheBox.IsChecked = enableUserDataCache;
 		WeeklyEquipmentLootBox.IsChecked = weeklyContents.ShowWeeklyEquipmentLoot;
 		WeeklyOathLootBox.IsChecked = weeklyContents.ShowWeeklyOathLoot;
@@ -113,6 +115,7 @@ public partial class SettingsWindow : Window
 	public int AutoRefreshIntervalMinutes => int.TryParse(AutoRefreshIntervalBox.Text, out var minutes)
 		? ClampAutoRefreshInterval(minutes)
 		: 30;
+	public bool ShowInTaskbar => ShowInTaskbarBox.IsChecked == true;
 	public bool EnableUserDataCache => EnableUserDataCacheBox.IsChecked == true;
 
 	public WeeklyContentSettings WeeklyContents => new()
