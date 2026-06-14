@@ -427,3 +427,11 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# Project-local metadata and release artifacts
+.codex/
+Releases/
+publish/
+appsettings.local.json
+settings.local.json
+*.local.json
