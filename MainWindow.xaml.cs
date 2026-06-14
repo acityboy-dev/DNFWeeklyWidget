@@ -1391,11 +1391,7 @@ public partial class MainWindow : Window
 
 	private void ApplyWeeklyContentSettingsToRows(IReadOnlyList<CharacterRow> rows, bool deferSummary = false)
 	{
-		var context = new WeeklyDisplayContext
-		{
-			TwilightOfInaeClearedCount = CountClearedWeeklyContent(rows, WeeklyContentDefinition.TwilightOfInaeId),
-			HardNabelClearedCount = CountClearedWeeklyContent(rows, WeeklyContentDefinition.HardNabelId)
-		};
+		var context = CreateWeeklyDisplayContext(rows);
 
 		foreach (var row in rows)
 			row.ApplyWeeklyContentSettings(_settings.WeeklyContents, context);
@@ -1410,6 +1406,23 @@ public partial class MainWindow : Window
 		}
 
 		UpdateBottomSummaryPanel(rows, context);
+	}
+
+	private static WeeklyDisplayContext CreateWeeklyDisplayContext(IEnumerable<CharacterRow> rows)
+	{
+		return new WeeklyDisplayContext
+		{
+			TwilightOfInaeClearedCount = CountClearedWeeklyContent(rows, WeeklyContentDefinition.TwilightOfInaeId),
+			HardNabelClearedCount = CountClearedWeeklyContent(rows, WeeklyContentDefinition.HardNabelId)
+		};
+	}
+
+	private static bool HasGlobalContentLimitStateChanged(
+		WeeklyDisplayContext previous,
+		WeeklyDisplayContext current)
+	{
+		return (previous.TwilightOfInaeClearedCount >= 8) != (current.TwilightOfInaeClearedCount >= 8) ||
+			(previous.HardNabelClearedCount >= 4) != (current.HardNabelClearedCount >= 4);
 	}
 
 	private static int CountClearedWeeklyContent(IEnumerable<CharacterRow> rows, string contentId)
@@ -2522,27 +2535,47 @@ public partial class MainWindow : Window
 		if (rows.Count == orderedRows.Count)
 			return;
 
+		var previousContext = CreateWeeklyDisplayContext(rows);
+		var currentContext = CreateWeeklyDisplayContext(orderedRows);
+		var globalLimitStateChanged = HasGlobalContentLimitStateChanged(previousContext, currentContext);
+
 		await AnimateCharacterRemovalAsync(row);
 
-		_presetService.PersistRows(orderedRows);
-		MarkUserDataDirty();
-
-		ApplyWeeklyContentSettingsToRows(orderedRows);
 		_allCharacterRows = orderedRows;
-		if (GetCharacterCollection() is { } collection)
+		if (globalLimitStateChanged)
 		{
-			var index = collection.ToList().FindIndex(x => IsSameCharacter(x, row));
-			if (index >= 0)
-				collection.RemoveAt(index);
+			ApplyWeeklyContentSettingsToRows(orderedRows);
+			_presetService.PersistRows(orderedRows);
+			if (_settings.FilterIncompleteOnly)
+			{
+				await RenderCharacterRowsAsync();
+			}
+			else
+			{
+				RemoveCharacterFromDisplayedCollection(row);
+			}
 		}
 		else
 		{
-			RenderCharacterRows();
+			_presetService.PersistRows(orderedRows);
+			RemoveCharacterFromDisplayedCollection(row);
+			UpdateBottomSummaryPanel(orderedRows, currentContext);
 		}
+		MarkUserDataDirty();
 
 		_presetService.SetRows(CurrentPreset.Id, _allCharacterRows);
 		UpdateCurrentCardWidths();
 		StatusText.Text = LogText.CharacterRemoved(row.CharacterName);
+	}
+
+	private void RemoveCharacterFromDisplayedCollection(CharacterRow row)
+	{
+		if (GetCharacterCollection() is not { } collection)
+			return;
+
+		var index = collection.ToList().FindIndex(item => IsSameCharacter(item, row));
+		if (index >= 0)
+			collection.RemoveAt(index);
 	}
 
 	private Task AnimateCharacterRemovalAsync(CharacterRow row)
