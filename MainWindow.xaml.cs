@@ -26,7 +26,7 @@ public partial class MainWindow : Window
 	private const double DeleteDropZoneRevealDistance = 260.0;
 	private const double DropIndicatorFadeMilliseconds = 140.0;
 	private const double CardScrollWheelStep = 168.0;
-	private const double CompactHeaderWidthThreshold = 900.0;
+	private const double CompactHeaderWidthThreshold = 765.0;
 
 	private static class LogText
 	{
