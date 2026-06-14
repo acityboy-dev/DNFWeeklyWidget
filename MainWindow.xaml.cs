@@ -221,7 +221,7 @@ public partial class MainWindow : Window
 		LoadingSpinnerRotation.BeginAnimation(RotateTransform.AngleProperty, animation);
 	}
 
-	private async void HideLoadingOverlay()
+	private async Task HideLoadingOverlayAsync()
 	{
 		if (_busyOverlayDepth > 0)
 			_busyOverlayDepth--;
@@ -655,13 +655,13 @@ public partial class MainWindow : Window
 		await AddCharacterAsync();
 	}
 
-	private void AdventureNameBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+	private async void AdventureNameBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
 	{
 		if (e.Key != Key.Enter)
 			return;
 
 		e.Handled = true;
-		ImportAdventure_Click(sender, e);
+		await ImportAdventureAsync();
 	}
 
 	private void HudTextBox_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
@@ -1215,6 +1215,11 @@ public partial class MainWindow : Window
 
 	private async void ImportAdventure_Click(object sender, RoutedEventArgs e)
 	{
+		await ImportAdventureAsync();
+	}
+
+	private async Task ImportAdventureAsync()
+	{
 		var adventureName = AdventureNameBox.Text.Trim();
 		if (string.IsNullOrWhiteSpace(adventureName))
 		{
@@ -1255,7 +1260,7 @@ public partial class MainWindow : Window
 		}
 		finally
 		{
-			HideLoadingOverlay();
+			await HideLoadingOverlayAsync();
 		}
 	}
 
@@ -1360,7 +1365,7 @@ public partial class MainWindow : Window
 		}
 		finally
 		{
-			HideLoadingOverlay();
+			await HideLoadingOverlayAsync();
 			_isRefreshing = false;
 		}
 	}
@@ -1496,7 +1501,7 @@ public partial class MainWindow : Window
 		}
 		finally
 		{
-			HideLoadingOverlay();
+			await HideLoadingOverlayAsync();
 			_isRefreshing = false;
 		}
 	}
@@ -2477,7 +2482,7 @@ public partial class MainWindow : Window
 		_dragStartPoint = e.GetPosition(this);
 	}
 
-	private void CharacterCard_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+	private async void CharacterCard_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
 	{
 		if (e.LeftButton != MouseButtonState.Pressed || _dragStartPoint is null)
 			return;
@@ -2513,7 +2518,7 @@ public partial class MainWindow : Window
 		try
 		{
 			DragDrop.DoDragDrop((DependencyObject)sender, row, System.Windows.DragDropEffects.Move);
-			CompleteDragFromCursor(row);
+			await CompleteDragFromCursorAsync(row);
 		}
 		finally
 		{
@@ -2562,17 +2567,17 @@ public partial class MainWindow : Window
 		e.Handled = true;
 	}
 
-	private void CharacterCard_Drop(object sender, System.Windows.DragEventArgs e)
+	private async void CharacterCard_Drop(object sender, System.Windows.DragEventArgs e)
 	{
-		HandleCharacterDrop(e);
+		await HandleCharacterDropAsync(e);
 	}
 
-	private void CharacterList_Drop(object sender, System.Windows.DragEventArgs e)
+	private async void CharacterList_Drop(object sender, System.Windows.DragEventArgs e)
 	{
-		HandleCharacterDrop(e);
+		await HandleCharacterDropAsync(e);
 	}
 
-	private void HandleCharacterDrop(System.Windows.DragEventArgs e)
+	private async Task HandleCharacterDropAsync(System.Windows.DragEventArgs e)
 	{
 		if (!e.Data.GetDataPresent(typeof(CharacterRow)))
 			return;
@@ -2583,18 +2588,18 @@ public partial class MainWindow : Window
 
 		var targetIndex = GetDropTarget(GetCursorPositionInCharacterList(), GetDropCalculationRows()).Index;
 
-		ReorderCharacterRows(source, targetIndex);
+		await ReorderCharacterRowsAsync(source, targetIndex);
 		e.Handled = true;
 	}
 
-	private void CompleteDragFromCursor(CharacterRow row)
+	private async Task CompleteDragFromCursorAsync(CharacterRow row)
 	{
 		if (_isDragCompleted)
 			return;
 
 		if (IsCursorInside(DeleteDropZone) && DeleteDropZone.Visibility == Visibility.Visible)
 		{
-			RemoveCharacterByDrop(row);
+			await RemoveCharacterByDropAsync(row);
 			return;
 		}
 
@@ -2602,7 +2607,7 @@ public partial class MainWindow : Window
 			return;
 
 		var targetIndex = GetDropTarget(GetCursorPositionInCharacterList(), GetDropCalculationRows()).Index;
-		ReorderCharacterRows(row, targetIndex);
+		await ReorderCharacterRowsAsync(row, targetIndex);
 	}
 
 	private static bool IsCursorInside(FrameworkElement element)
@@ -2650,7 +2655,7 @@ public partial class MainWindow : Window
 		HideDropIndicator();
 	}
 
-	private void DeleteDropZone_Drop(object sender, System.Windows.DragEventArgs e)
+	private async void DeleteDropZone_Drop(object sender, System.Windows.DragEventArgs e)
 	{
 		if (!e.Data.GetDataPresent(typeof(CharacterRow)))
 			return;
@@ -2659,7 +2664,7 @@ public partial class MainWindow : Window
 		if (source is null)
 			return;
 
-		RemoveCharacterByDrop(source);
+		await RemoveCharacterByDropAsync(source);
 		e.Handled = true;
 	}
 
@@ -2801,7 +2806,7 @@ public partial class MainWindow : Window
         // Binding updates card widths without forcing a full item refresh.
     }
 
-	private void ReorderCharacterRows(CharacterRow source, int targetIndex)
+	private async Task ReorderCharacterRowsAsync(CharacterRow source, int targetIndex)
 	{
 		IEnumerable<CharacterRow> baseRows = _dragBaseRows ?? GetOrderedCharacterRows();
 		var orderedRows = baseRows
@@ -2832,7 +2837,7 @@ public partial class MainWindow : Window
 		_isDragCompleted = true;
 		collection.Move(currentIndex, targetIndex);
 		UpdateCurrentCardWidths();
-		AnimateCharacterReorderHint(movingRow);
+		await AnimateCharacterReorderHintAsync(movingRow);
 
 		CurrentPreset.Characters = orderedRows
 			.Select(x => new SavedCharacter
@@ -2851,7 +2856,7 @@ public partial class MainWindow : Window
 		StatusText.Text = "카드 순서를 변경했습니다.";
 	}
 
-	private async void AnimateCharacterReorderHint(CharacterRow row)
+	private async Task AnimateCharacterReorderHintAsync(CharacterRow row)
 	{
 		await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Loaded);
 		if (FindCharacterCardContainer(row) is not FrameworkElement container)
@@ -2889,7 +2894,7 @@ public partial class MainWindow : Window
 		transform.BeginAnimation(ScaleTransform.ScaleYProperty, scaleAnimation);
 	}
 
-	private async void RemoveCharacterByDrop(CharacterRow row)
+	private async Task RemoveCharacterByDropAsync(CharacterRow row)
 	{
 		var rows = _dragBaseRows ?? GetOrderedCharacterRows();
 		if (!rows.Any(x => IsSameCharacter(x, row)))
