@@ -1,0 +1,1106 @@
+﻿<Window x:Class="DNFWeeklyWidget.MainWindow"
+		xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+		xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+		xmlns:local="clr-namespace:DNFWeeklyWidget"
+		xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+		Width="720" Height="720"
+		MinWidth="720" MinHeight="480"
+		WindowStyle="None"
+		AllowsTransparency="False"
+		Background="Transparent"
+		ResizeMode="CanResize"
+		Topmost="False"
+		ShowInTaskbar="False"
+		SizeChanged="Window_SizeChanged"
+		LocationChanged="Window_LocationChanged"
+		MouseLeftButtonDown="Window_MouseLeftButtonDown">
+
+	<shell:WindowChrome.WindowChrome>
+		<shell:WindowChrome CaptionHeight="0"
+							GlassFrameThickness="0"
+							ResizeBorderThickness="8"
+							UseAeroCaptionButtons="False"/>
+	</shell:WindowChrome.WindowChrome>
+
+	<Window.Resources>
+		<BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+		<SolidColorBrush x:Key="PrimaryTextBrush" Color="White"/>
+		<SolidColorBrush x:Key="SecondaryTextBrush" Color="#99FFFFFF"/>
+		<SolidColorBrush x:Key="TertiaryTextBrush" Color="#AAFFFFFF"/>
+		<SolidColorBrush x:Key="CompletedTextBrush" Color="#7EDC9A"/>
+		<SolidColorBrush x:Key="BlockedTextBrush" Color="#FF6B6B"/>
+		<SolidColorBrush x:Key="CardBackgroundBrush" Color="#22FFFFFF"/>
+		<SolidColorBrush x:Key="RemoveButtonBackgroundBrush" Color="#DD2A2D33"/>
+		<SolidColorBrush x:Key="RemoveButtonBorderBrush" Color="#55FFFFFF"/>
+		<SolidColorBrush x:Key="ButtonBackgroundBrush" Color="#14FFFFFF"/>
+		<SolidColorBrush x:Key="ButtonHoverBackgroundBrush" Color="#22FFFFFF"/>
+		<SolidColorBrush x:Key="ButtonPressedBackgroundBrush" Color="#33FFFFFF"/>
+		<SolidColorBrush x:Key="ScrollThumbBrush" Color="#66FFFFFF"/>
+		<SolidColorBrush x:Key="ScrollThumbHoverBrush" Color="#88FFFFFF"/>
+		<SolidColorBrush x:Key="ScrollThumbPressedBrush" Color="#AAFFFFFF"/>
+		<SolidColorBrush x:Key="InputBackgroundBrush" Color="#1AFFFFFF"/>
+		<SolidColorBrush x:Key="InputBorderBrush" Color="#44FFFFFF"/>
+		<SolidColorBrush x:Key="InputFocusedBorderBrush" Color="#88FFFFFF"/>
+		<SolidColorBrush x:Key="InputSelectionBrush" Color="#6688C7FF"/>
+		<SolidColorBrush x:Key="EpicLootTextBrush" Color="#FFFFB400"/>
+		<LinearGradientBrush x:Key="PrimevalLootTextBrush"
+							 StartPoint="0,0"
+							 EndPoint="0,1">
+			<GradientStop Color="#FF5AFF62" Offset="0"/>
+			<GradientStop Color="#FF59E99D" Offset="0.34"/>
+			<GradientStop Color="#FF58C8FA" Offset="0.68"/>
+			<GradientStop Color="#FF3A67BF" Offset="1"/>
+		</LinearGradientBrush>
+		<DropShadowEffect x:Key="PrimevalLootTextGlowEffect"
+						  Color="#FF58C8FA"
+						  BlurRadius="3"
+						  ShadowDepth="0"
+						  Opacity="0.24"/>
+		<DropShadowEffect x:Key="EpicLootTextGlowEffect"
+						  Color="#FFFFB400"
+						  BlurRadius="3"
+						  ShadowDepth="0"
+						  Opacity="0.24"/>
+
+		<Style x:Key="InvisibleScrollBarButtonStyle" TargetType="RepeatButton">
+			<Setter Property="Focusable" Value="False"/>
+			<Setter Property="IsTabStop" Value="False"/>
+			<Setter Property="Template">
+				<Setter.Value>
+					<ControlTemplate TargetType="RepeatButton">
+						<Border Background="Transparent"/>
+					</ControlTemplate>
+				</Setter.Value>
+			</Setter>
+		</Style>
+
+		<Style x:Key="PillScrollThumbStyle" TargetType="Thumb">
+			<Setter Property="MinHeight" Value="42"/>
+			<Setter Property="Template">
+				<Setter.Value>
+					<ControlTemplate TargetType="Thumb">
+						<Border x:Name="ThumbPill"
+								Width="6"
+								Margin="2 4"
+								HorizontalAlignment="Center"
+								Background="{DynamicResource ScrollThumbBrush}"
+								CornerRadius="4"/>
+						<ControlTemplate.Triggers>
+							<Trigger Property="IsMouseOver" Value="True">
+								<Setter TargetName="ThumbPill" Property="Width" Value="8"/>
+								<Setter TargetName="ThumbPill" Property="Background" Value="{DynamicResource ScrollThumbHoverBrush}"/>
+							</Trigger>
+							<Trigger Property="IsDragging" Value="True">
+								<Setter TargetName="ThumbPill" Property="Width" Value="8"/>
+								<Setter TargetName="ThumbPill" Property="Background" Value="{DynamicResource ScrollThumbPressedBrush}"/>
+							</Trigger>
+						</ControlTemplate.Triggers>
+					</ControlTemplate>
+				</Setter.Value>
+			</Setter>
+		</Style>
+
+		<Style TargetType="ScrollBar">
+			<Setter Property="Width" Value="12"/>
+			<Setter Property="MinWidth" Value="12"/>
+			<Setter Property="Background" Value="Transparent"/>
+			<Setter Property="Template">
+				<Setter.Value>
+					<ControlTemplate TargetType="ScrollBar">
+						<Grid Background="Transparent">
+							<Track x:Name="PART_Track"
+								   IsDirectionReversed="True">
+								<Track.DecreaseRepeatButton>
+									<RepeatButton Command="ScrollBar.PageUpCommand"
+												  Style="{StaticResource InvisibleScrollBarButtonStyle}"/>
+								</Track.DecreaseRepeatButton>
+								<Track.Thumb>
+									<Thumb Style="{StaticResource PillScrollThumbStyle}"/>
+								</Track.Thumb>
+								<Track.IncreaseRepeatButton>
+									<RepeatButton Command="ScrollBar.PageDownCommand"
+												  Style="{StaticResource InvisibleScrollBarButtonStyle}"/>
+								</Track.IncreaseRepeatButton>
+							</Track>
+						</Grid>
+					</ControlTemplate>
+				</Setter.Value>
+			</Setter>
+		</Style>
+
+		<Style TargetType="Button">
+			<Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+			<Setter Property="Background" Value="{DynamicResource ButtonBackgroundBrush}"/>
+			<Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}"/>
+			<Setter Property="BorderBrush" Value="Transparent"/>
+			<Setter Property="BorderThickness" Value="0"/>
+			<Setter Property="Padding" Value="10 4"/>
+			<Setter Property="Cursor" Value="Hand"/>
+			<Setter Property="HorizontalContentAlignment" Value="Center"/>
+			<Setter Property="VerticalContentAlignment" Value="Center"/>
+			<Setter Property="Template">
+				<Setter.Value>
+					<ControlTemplate TargetType="Button">
+						<Border x:Name="ButtonChrome"
+								Background="{TemplateBinding Background}"
+								CornerRadius="8"
+								SnapsToDevicePixels="True">
+							<ContentPresenter x:Name="ContentHost"
+											  Margin="{TemplateBinding Padding}"
+											  HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+											  VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+											  RecognizesAccessKey="True"/>
+						</Border>
+						<ControlTemplate.Triggers>
+							<Trigger Property="IsMouseOver" Value="True">
+								<Setter Property="Background" Value="{DynamicResource ButtonHoverBackgroundBrush}"/>
+							</Trigger>
+							<Trigger Property="IsPressed" Value="True">
+								<Setter Property="Background" Value="{DynamicResource ButtonPressedBackgroundBrush}"/>
+								<Setter TargetName="ContentHost" Property="RenderTransform">
+									<Setter.Value>
+										<TranslateTransform Y="1"/>
+									</Setter.Value>
+								</Setter>
+							</Trigger>
+							<Trigger Property="IsEnabled" Value="False">
+								<Setter Property="Opacity" Value="0.45"/>
+							</Trigger>
+						</ControlTemplate.Triggers>
+					</ControlTemplate>
+				</Setter.Value>
+			</Setter>
+		</Style>
+
+		<Style x:Key="HudLabelStyle" TargetType="TextBlock">
+			<Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}"/>
+			<Setter Property="FontSize" Value="12"/>
+			<Setter Property="FontWeight" Value="SemiBold"/>
+			<Setter Property="VerticalAlignment" Value="Center"/>
+		</Style>
+
+		<Style x:Key="CardRemoveButtonStyle" TargetType="Button">
+			<Setter Property="Visibility" Value="Collapsed"/>
+			<Setter Property="Width" Value="24"/>
+			<Setter Property="Height" Value="24"/>
+			<Setter Property="HorizontalAlignment" Value="Right"/>
+			<Setter Property="VerticalAlignment" Value="Top"/>
+			<Setter Property="Margin" Value="0 -8 -8 0"/>
+			<Setter Property="FontSize" Value="16"/>
+			<Setter Property="FontWeight" Value="Bold"/>
+			<Setter Property="Background" Value="Transparent"/>
+			<Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}"/>
+			<Setter Property="BorderBrush" Value="Transparent"/>
+			<Setter Property="BorderThickness" Value="0"/>
+			<Setter Property="Padding" Value="0"/>
+			<Setter Property="Template">
+				<Setter.Value>
+					<ControlTemplate TargetType="Button">
+						<ContentPresenter HorizontalAlignment="Center"
+										  VerticalAlignment="Center"
+										  RecognizesAccessKey="True"/>
+					</ControlTemplate>
+				</Setter.Value>
+			</Setter>
+			<Style.Triggers>
+				<DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Border}}" Value="True">
+					<Setter Property="Visibility" Value="Visible"/>
+				</DataTrigger>
+				<Trigger Property="IsMouseOver" Value="True">
+					<Setter Property="Foreground" Value="{DynamicResource BlockedTextBrush}"/>
+				</Trigger>
+			</Style.Triggers>
+		</Style>
+
+		<Style x:Key="CharacterCardStyle" TargetType="Border">
+			<Setter Property="Background" Value="{DynamicResource CardBackgroundBrush}"/>
+			<Setter Property="BorderBrush" Value="Transparent"/>
+			<Setter Property="BorderThickness" Value="0"/>
+			<Setter Property="CornerRadius" Value="14"/>
+			<Setter Property="Padding" Value="12"/>
+			<Setter Property="MinHeight" Value="240"/>
+			<Style.Triggers>
+				<DataTrigger Binding="{Binding IsDragging}" Value="True">
+					<Setter Property="Opacity" Value="0.35"/>
+				</DataTrigger>
+				<DataTrigger Binding="{Binding IsDropIndicator}" Value="True">
+					<Setter Property="Background" Value="{DynamicResource ButtonHoverBackgroundBrush}"/>
+					<Setter Property="BorderBrush" Value="{DynamicResource InputFocusedBorderBrush}"/>
+					<Setter Property="BorderThickness" Value="1"/>
+					<Setter Property="CornerRadius" Value="14"/>
+					<Setter Property="Padding" Value="12"/>
+					<Setter Property="MinHeight" Value="380"/>
+					<Setter Property="Opacity" Value="0.75"/>
+				</DataTrigger>
+			</Style.Triggers>
+		</Style>
+
+		<Style x:Key="SummaryLineTextStyle" TargetType="TextBlock">
+			<Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}"/>
+			<Setter Property="FontSize" Value="13"/>
+			<Setter Property="LineHeight" Value="18"/>
+			<Setter Property="TextWrapping" Value="Wrap"/>
+			<Style.Triggers>
+				<DataTrigger Binding="{Binding IsCleared}" Value="True">
+					<Setter Property="Foreground" Value="{DynamicResource CompletedTextBrush}"/>
+				</DataTrigger>
+				<DataTrigger Binding="{Binding IsLimitedOut}" Value="True">
+					<Setter Property="Foreground" Value="{DynamicResource TertiaryTextBrush}"/>
+					<Setter Property="Opacity" Value="0.52"/>
+					<Setter Property="TextDecorations" Value="Strikethrough"/>
+				</DataTrigger>
+				<DataTrigger Binding="{Binding IsFameLocked}" Value="True">
+					<Setter Property="Foreground" Value="{DynamicResource BlockedTextBrush}"/>
+					<Setter Property="Opacity" Value="1"/>
+					<Setter Property="TextDecorations" Value="{x:Null}"/>
+				</DataTrigger>
+			</Style.Triggers>
+		</Style>
+
+		<Style x:Key="SummaryLineMarkerStyle" TargetType="TextBlock">
+			<Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}"/>
+			<Setter Property="FontSize" Value="13"/>
+			<Setter Property="LineHeight" Value="18"/>
+			<Setter Property="Margin" Value="0 0 4 0"/>
+			<Style.Triggers>
+				<DataTrigger Binding="{Binding IsCleared}" Value="True">
+					<Setter Property="Foreground" Value="{DynamicResource CompletedTextBrush}"/>
+				</DataTrigger>
+				<DataTrigger Binding="{Binding IsLimitedOut}" Value="True">
+					<Setter Property="Foreground" Value="{DynamicResource TertiaryTextBrush}"/>
+					<Setter Property="Opacity" Value="0.52"/>
+				</DataTrigger>
+				<DataTrigger Binding="{Binding IsFameLocked}" Value="True">
+					<Setter Property="Foreground" Value="{DynamicResource BlockedTextBrush}"/>
+					<Setter Property="Opacity" Value="1"/>
+				</DataTrigger>
+			</Style.Triggers>
+		</Style>
+	</Window.Resources>
+
+	<Border x:Name="RootPanel"
+			Background="Transparent"
+			BorderThickness="0"
+			Padding="22">
+
+		<Grid>
+			<Grid.RowDefinitions>
+				<RowDefinition Height="Auto"/>
+				<RowDefinition Height="Auto"/>
+				<RowDefinition Height="*"/>
+				<RowDefinition Height="Auto"/>
+				<RowDefinition Height="Auto"/>
+			</Grid.RowDefinitions>
+
+			<DockPanel x:Name="TitleBar"
+					   Grid.Row="0"
+					   Margin="0 0 0 18">
+				<TextBlock x:Name="TitleText"
+						   Text="DNF Weekly Widget"
+						   Foreground="{DynamicResource PrimaryTextBrush}"
+						   FontSize="24"
+						   FontWeight="Bold"
+						   VerticalAlignment="Center"
+						   DockPanel.Dock="Left"/>
+
+				<StackPanel Orientation="Horizontal"
+							HorizontalAlignment="Right"
+							DockPanel.Dock="Right">
+					<Button x:Name="IncompleteFilterButton"
+							Content="미완료만"
+							Width="76"
+							Height="34"
+							FontSize="13"
+							Margin="0 0 8 0"
+							ToolTip="미완료 콘텐츠가 있는 카드만 보기"
+							Click="IncompleteFilter_Click"/>
+					<Button x:Name="FameSortButton"
+							Content="명성순"
+							Width="64"
+							Height="34"
+							FontSize="13"
+							Margin="0 0 8 0"
+							ToolTip="명성순 자동 정렬"
+							Click="FameSort_Click"/>
+					<Button x:Name="ClearAllButton"
+							Content="전체삭제"
+							Width="70"
+							Height="34"
+							FontSize="13"
+							Margin="0 0 18 0"
+							ToolTip="전체 카드 엔트리 삭제"
+							Click="ClearAllCharacters_Click"/>
+					<Button x:Name="RefreshNowButton"
+							Width="88"
+							Height="34"
+							FontSize="14"
+							Margin="0 0 8 0"
+							Click="RefreshNow_Click">
+						<Grid>
+							<TextBlock x:Name="RefreshNowText"
+									   Text="지금 갱신"
+									   HorizontalAlignment="Center"
+									   VerticalAlignment="Center"/>
+							<Path x:Name="RefreshNowIcon"
+								  Data="M 12.5 5.5 A 4.8 4.8 0 1 0 13 9 M 13 3 L 13 6 L 10 6"
+								  Stroke="{DynamicResource PrimaryTextBrush}"
+								  StrokeThickness="1"
+								  StrokeStartLineCap="Round"
+								  StrokeEndLineCap="Round"
+								  StrokeLineJoin="Round"
+								  Stretch="Uniform"
+								  Width="16"
+								  Height="16"
+								  Visibility="Collapsed"/>
+						</Grid>
+					</Button>
+					<Button x:Name="SettingsButton"
+							Width="68"
+							Height="34"
+							FontSize="14"
+							Margin="0 0 8 0"
+							Click="Settings_Click">
+						<Grid>
+							<TextBlock x:Name="SettingsText"
+									   Text="설정"
+									   HorizontalAlignment="Center"
+									   VerticalAlignment="Center"/>
+                            <Path x:Name="SettingsIcon"
+								  Data="M3 4.2 H4.8
+										M7.4 4.2 H13
+										M6.1 2.9
+										A1.3 1.3 0 1 1 6.09 2.9
+
+										M3 8 H8.6
+										M11.2 8 H13
+										M9.9 6.7
+										A1.3 1.3 0 1 1 9.89 6.7
+
+										M3 11.8 H6.3
+										M8.9 11.8 H13
+										M7.6 10.5
+										A1.3 1.3 0 1 1 7.59 10.5"
+								  Stroke="{DynamicResource PrimaryTextBrush}"
+								  StrokeThickness="1"
+								  StrokeStartLineCap="Round"
+								  StrokeEndLineCap="Round"
+								  StrokeLineJoin="Round"
+								  Fill="Transparent"
+								  Stretch="Uniform"
+								  Width="16"
+								  Height="16"/>	
+                        </Grid>
+					</Button>
+					<Button x:Name="CompactModeButton"
+							Width="36"
+							Height="34"
+							Margin="0 0 8 0"
+							Padding="0"
+							ToolTip="컴팩트 모드 전환"
+							Click="CompactMode_Click">
+						<Path x:Name="CompactModeIcon"
+							  Data="M 2 10 L 8 4 L 14 10 M 2 15 L 14 15"
+							  Stroke="{DynamicResource PrimaryTextBrush}"
+							  StrokeThickness="1"
+							  StrokeStartLineCap="Round"
+							  StrokeEndLineCap="Round"
+							  Stretch="Uniform"
+							  Width="16"
+							  Height="16"/>
+					</Button>
+					<Button x:Name="CloseButton"
+							Width="36"
+							Height="34"
+							Padding="0"
+							HorizontalAlignment="Right"
+							Click="Close_Click">
+						<Path x:Name="CloseIcon"
+							  Data="M 3 3 L 13 13 M 13 3 L 3 13"
+							  Stroke="{DynamicResource PrimaryTextBrush}"
+							  StrokeThickness="1"
+							  StrokeStartLineCap="Round"
+							  StrokeEndLineCap="Round"
+							  Stretch="Uniform"
+							  Width="16"
+							  Height="16"/>
+					</Button>
+				</StackPanel>
+			</DockPanel>
+
+			<StackPanel Grid.Row="1" Margin="0 0 0 18" Visibility="Collapsed">
+				<DockPanel Margin="0 0 0 10">
+					<TextBox x:Name="OldAdventureNameBox"
+							 Width="336"
+							 Height="34"
+							 FontSize="15"
+							 Margin="0 0 10 0"/>
+					<Button Content="던담 모험단 적용"
+							Width="128"
+							Height="34"
+							FontSize="14"
+							Click="ImportAdventure_Click"/>
+				</DockPanel>
+
+				<DockPanel Margin="0 0 0 10">
+					<ComboBox x:Name="OldServerComboBox"
+							  Width="120"
+							  Height="34"
+							  FontSize="15"
+							  DisplayMemberPath="Name"
+							  SelectedValuePath="Id"
+							  Margin="0 0 10 0"/>
+					<TextBox x:Name="OldCharacterNameBox"
+							 Width="258"
+							 Height="34"
+							 FontSize="15"
+							 Margin="0 0 10 0"
+							 KeyDown="CharacterNameBox_KeyDown"/>
+					<Button Content="추가"
+							Width="80"
+							Height="34"
+							FontSize="14"
+							Click="AddCharacter_Click"/>
+				</DockPanel>
+
+				<DockPanel>
+					<TextBlock Text="한 줄 카드 수"
+							   Foreground="{DynamicResource PrimaryTextBrush}"
+							   FontSize="14"
+							   VerticalAlignment="Center"
+							   Margin="0 0 10 0"/>
+					<TextBox x:Name="OldColumnsBox"
+							 Width="56"
+							 Height="32"
+							 FontSize="15"
+							 Text="2"/>
+					<Button Content="지금 갱신"
+							Width="112"
+							Height="32"
+							FontSize="14"
+							Margin="12 0 0 0"
+							Click="RefreshNow_Click"/>
+				</DockPanel>
+			</StackPanel>
+
+			<Grid x:Name="HudPanel"
+				  Grid.Row="1"
+				  Margin="0 0 0 18">
+				<Grid.RowDefinitions>
+					<RowDefinition Height="34"/>
+					<RowDefinition Height="10"/>
+					<RowDefinition Height="34"/>
+				</Grid.RowDefinitions>
+
+				<Grid Grid.Row="0">
+					<Grid.ColumnDefinitions>
+						<ColumnDefinition Width="58"/>
+						<ColumnDefinition Width="10"/>
+						<ColumnDefinition Width="*"/>
+						<ColumnDefinition Width="10"/>
+						<ColumnDefinition Width="Auto"/>
+					</Grid.ColumnDefinitions>
+					<TextBlock Grid.Column="0"
+							   Text="모험단"
+							   Style="{StaticResource HudLabelStyle}"/>
+					<TextBox x:Name="AdventureNameBox"
+							 Grid.Column="2"
+							 Height="34"
+							 FontSize="15"
+							 PreviewKeyDown="HudTextBox_PreviewKeyDown"/>
+					<Button Grid.Column="4"
+							Content="던담에서 리스트 불러오기"
+							MinWidth="186"
+							Height="34"
+							FontSize="14"
+							Click="ImportAdventure_Click"/>
+				</Grid>
+
+				<Grid Grid.Row="2">
+					<Grid.ColumnDefinitions>
+						<ColumnDefinition Width="58"/>
+						<ColumnDefinition Width="10"/>
+						<ColumnDefinition Width="112"/>
+						<ColumnDefinition Width="8"/>
+						<ColumnDefinition Width="*"/>
+						<ColumnDefinition Width="8"/>
+						<ColumnDefinition Width="64"/>
+					</Grid.ColumnDefinitions>
+					<TextBlock Grid.Column="0"
+							   Text="캐릭터"
+							   Style="{StaticResource HudLabelStyle}"/>
+					<ComboBox x:Name="ServerComboBox"
+							  Grid.Column="2"
+							  Height="34"
+							  FontSize="15"
+							  DisplayMemberPath="Name"
+							  SelectedValuePath="Id"/>
+					<TextBox x:Name="CharacterNameBox"
+							 Grid.Column="4"
+							 Height="34"
+							 FontSize="15"
+							 PreviewKeyDown="HudTextBox_PreviewKeyDown"
+							 KeyDown="CharacterNameBox_KeyDown"/>
+					<Button Grid.Column="6"
+							Content="추가"
+							Height="34"
+							FontSize="14"
+							Click="AddCharacter_Click"/>
+				</Grid>
+
+			</Grid>
+
+			<Grid Grid.Row="2">
+				<ScrollViewer x:Name="CharacterScrollViewer"
+							  VerticalScrollBarVisibility="Visible"
+							  HorizontalScrollBarVisibility="Disabled"
+							  Margin="0 0 -14 0"
+							  Padding="0 0 6 0"
+							  SizeChanged="CharacterScrollViewer_SizeChanged"
+							  ScrollChanged="CharacterScrollViewer_ScrollChanged"
+							  PreviewMouseWheel="CharacterScrollViewer_PreviewMouseWheel">
+					<ItemsControl x:Name="CharacterList"
+								  Tag="2"
+								  AllowDrop="True"
+								  DragOver="CharacterList_DragOver"
+								  Drop="CharacterList_Drop">
+						<ItemsControl.ItemsPanel>
+							<ItemsPanelTemplate>
+								<local:FixedColumnWrapPanel Columns="{Binding Tag, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+															ItemSpacing="12"/>
+							</ItemsPanelTemplate>
+						</ItemsControl.ItemsPanel>
+						<ItemsControl.ItemContainerStyle>
+							<Style TargetType="ContentPresenter">
+								<Setter Property="HorizontalAlignment" Value="Stretch"/>
+								<Setter Property="VerticalAlignment" Value="Stretch"/>
+							</Style>
+						</ItemsControl.ItemContainerStyle>
+
+						<ItemsControl.ItemTemplate>
+							<DataTemplate>
+								<Border Width="{Binding CardWidth}"
+										VerticalAlignment="Stretch"
+										Style="{StaticResource CharacterCardStyle}"
+										AllowDrop="True"
+										PreviewMouseLeftButtonDown="CharacterCard_PreviewMouseLeftButtonDown"
+										MouseMove="CharacterCard_MouseMove"
+										GiveFeedback="CharacterCard_GiveFeedback"
+										QueryContinueDrag="CharacterCard_QueryContinueDrag"
+										DragOver="CharacterCard_DragOver"
+										Drop="CharacterCard_Drop">
+									<Grid VerticalAlignment="Top">
+										<Grid.Style>
+											<Style TargetType="Grid">
+												<Setter Property="Visibility" Value="Visible"/>
+												<Style.Triggers>
+													<DataTrigger Binding="{Binding IsDropIndicator}" Value="True">
+														<Setter Property="Visibility" Value="Collapsed"/>
+													</DataTrigger>
+												</Style.Triggers>
+											</Style>
+										</Grid.Style>
+
+										<StackPanel>
+											<Border Height="150"
+													ClipToBounds="True"
+													Margin="0 -4 0 10"
+													Visibility="{Binding ShowFullImage, Converter={StaticResource BoolToVisibilityConverter}}">
+												<Grid>
+													<Image Source="{Binding ImageUrl}"
+														   Stretch="None"
+														   HorizontalAlignment="Center"
+														   VerticalAlignment="Top"
+														   Margin="0 -58 0 0"
+														   Visibility="{Binding ShowFullCharacterImage, Converter={StaticResource BoolToVisibilityConverter}}"/>
+													<Grid Width="78"
+														  Height="78"
+														  HorizontalAlignment="Center"
+														  VerticalAlignment="Center"
+														  Visibility="{Binding ShowFullImagePlaceholder, Converter={StaticResource BoolToVisibilityConverter}}">
+														<Ellipse Fill="{DynamicResource ButtonHoverBackgroundBrush}"/>
+														<TextBlock Text="?"
+																   Foreground="{DynamicResource SecondaryTextBrush}"
+																   FontSize="34"
+																   FontWeight="SemiBold"
+																   HorizontalAlignment="Center"
+																   VerticalAlignment="Center"
+																   Margin="0 -3 0 0"/>
+													</Grid>
+												</Grid>
+											</Border>
+
+											<Grid Margin="0 0 0 8"
+												  Visibility="{Binding ShowCompactImage, Converter={StaticResource BoolToVisibilityConverter}}">
+												<Grid.ColumnDefinitions>
+													<ColumnDefinition Width="40"/>
+													<ColumnDefinition Width="*"/>
+												</Grid.ColumnDefinitions>
+												<Grid Width="34"
+													  Height="34"
+													  ClipToBounds="True"
+													  Background="Transparent"
+													  VerticalAlignment="Center">
+													<Grid.Clip>
+														<EllipseGeometry Center="17,17"
+																		 RadiusX="17"
+																		 RadiusY="17"/>
+													</Grid.Clip>
+													<Image Source="{Binding ImageUrl}"
+														   Stretch="None"
+														   HorizontalAlignment="Left"
+														   VerticalAlignment="Top"
+														   Margin="{Binding CompactImageMargin}"
+														   Visibility="{Binding ShowCompactCharacterImage, Converter={StaticResource BoolToVisibilityConverter}}"/>
+													<Grid Visibility="{Binding ShowCompactImagePlaceholder, Converter={StaticResource BoolToVisibilityConverter}}">
+														<Ellipse Fill="{DynamicResource ButtonHoverBackgroundBrush}"/>
+														<TextBlock Text="?"
+																   Foreground="{DynamicResource SecondaryTextBrush}"
+																   FontSize="17"
+																   FontWeight="SemiBold"
+																   HorizontalAlignment="Center"
+																   VerticalAlignment="Center"
+																   Margin="0 -1 0 0"/>
+													</Grid>
+												</Grid>
+												<StackPanel Grid.Column="1"
+															VerticalAlignment="Center">
+													<TextBlock Text="{Binding CharacterName}"
+															   Foreground="{DynamicResource PrimaryTextBrush}"
+															   FontSize="16"
+															   FontWeight="Bold"
+															   TextWrapping="Wrap"
+															   TextTrimming="CharacterEllipsis"/>
+													<TextBlock Text="{Binding ServerName}"
+															   Foreground="{DynamicResource SecondaryTextBrush}"
+															   FontSize="12"
+															   Margin="0 2 0 0"
+															   TextTrimming="CharacterEllipsis"/>
+												</StackPanel>
+											</Grid>
+
+											<TextBlock Text="{Binding CharacterName}"
+													   Foreground="{DynamicResource PrimaryTextBrush}"
+													   FontSize="16"
+													   FontWeight="Bold"
+													   TextWrapping="Wrap"
+													   TextTrimming="CharacterEllipsis"
+													   Visibility="{Binding ShowStandardHeader, Converter={StaticResource BoolToVisibilityConverter}}"/>
+
+											<TextBlock Text="{Binding ServerName}"
+													   Foreground="{DynamicResource SecondaryTextBrush}"
+													   FontSize="12"
+													   Margin="0 2 0 0"
+													   TextTrimming="CharacterEllipsis"
+													   Visibility="{Binding ShowStandardHeader, Converter={StaticResource BoolToVisibilityConverter}}"/>
+
+											<local:MarqueeTextBlock Text="{Binding MetaSummary}"
+																	Foreground="{DynamicResource PrimaryTextBrush}"
+																	FontSize="13"
+																	Height="19"
+																	Margin="0 6 0 0"/>
+
+											<Border Height="1"
+													Background="{DynamicResource InputBorderBrush}"
+													Opacity="0.55"
+													Margin="0 8 0 7"/>
+
+											<ItemsControl ItemsSource="{Binding SummaryLines}"
+														  Visibility="{Binding IsCompactLayout, Converter={StaticResource BoolToVisibilityConverter}}">
+												<ItemsControl.ItemTemplate>
+													<DataTemplate>
+														<Grid>
+															<Border x:Name="SummarySeparator"
+																	Height="1"
+																	Background="{DynamicResource InputBorderBrush}"
+																	Opacity="0.42"
+																	Margin="0 6 0 6"
+																	Visibility="Collapsed"/>
+															<Grid x:Name="SummaryTextLine"
+																  Margin="0 0 0 1">
+																<Grid.ColumnDefinitions>
+																	<ColumnDefinition Width="Auto"/>
+																	<ColumnDefinition Width="*"/>
+																</Grid.ColumnDefinitions>
+																<TextBlock Text="{Binding Marker}"
+																		   Style="{StaticResource SummaryLineMarkerStyle}"/>
+																<TextBlock x:Name="SummaryBodyText"
+																		   Grid.Column="1"
+																		   Text="{Binding Body}"
+																		   Style="{StaticResource SummaryLineTextStyle}"/>
+																<TextBlock x:Name="SummaryWeeklyLootText"
+																		   Grid.Column="1"
+																		   Style="{StaticResource SummaryLineTextStyle}"
+																		   Visibility="Collapsed">
+																	<Run Text="{Binding LootTitle}"/>
+																	<Run Text=": "/>
+																	<InlineUIContainer BaselineAlignment="Center">
+																		<TextBlock Text="{Binding PrimevalCount}"
+																				   FontSize="13"
+																				   FontWeight="SemiBold"
+																				   Foreground="{DynamicResource PrimevalLootTextBrush}"
+																				   Effect="{StaticResource PrimevalLootTextGlowEffect}"/>
+																	</InlineUIContainer>
+																	<Run Text="/"/>
+																	<InlineUIContainer BaselineAlignment="Center">
+																		<TextBlock Text="{Binding EpicCount}"
+																				   FontSize="13"
+																				   FontWeight="SemiBold"
+																				   Foreground="{DynamicResource EpicLootTextBrush}"
+																				   Effect="{StaticResource EpicLootTextGlowEffect}"/>
+																	</InlineUIContainer>
+																</TextBlock>
+															</Grid>
+														</Grid>
+														<DataTemplate.Triggers>
+															<DataTrigger Binding="{Binding IsWeeklyLoot}" Value="True">
+																<Setter TargetName="SummaryBodyText" Property="Visibility" Value="Collapsed"/>
+																<Setter TargetName="SummaryWeeklyLootText" Property="Visibility" Value="Visible"/>
+															</DataTrigger>
+															<DataTrigger Binding="{Binding IsSeparator}" Value="True">
+																<Setter TargetName="SummarySeparator" Property="Visibility" Value="Visible"/>
+																<Setter TargetName="SummaryTextLine" Property="Visibility" Value="Collapsed"/>
+															</DataTrigger>
+														</DataTemplate.Triggers>
+													</DataTemplate>
+												</ItemsControl.ItemTemplate>
+											</ItemsControl>
+
+											<ItemsControl ItemsSource="{Binding SummaryParagraphs}"
+														  Margin="0 -1 0 -4"
+														  Visibility="{Binding IsWideLayout, Converter={StaticResource BoolToVisibilityConverter}}">
+												<ItemsControl.ItemsPanel>
+													<ItemsPanelTemplate>
+														<WrapPanel/>
+													</ItemsPanelTemplate>
+											</ItemsControl.ItemsPanel>
+											<ItemsControl.ItemTemplate>
+												<DataTemplate>
+													<Grid>
+														<Border x:Name="SummarySeparator"
+																Width="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+																Height="1"
+																Background="{DynamicResource InputBorderBrush}"
+																Opacity="0.42"
+																Margin="0 6 0 8"
+																Visibility="Collapsed"/>
+														<Grid x:Name="SummaryTextLine"
+															  MaxWidth="260"
+															  Margin="0 0 16 5">
+															<Grid.ColumnDefinitions>
+																<ColumnDefinition Width="Auto"/>
+																<ColumnDefinition Width="*"/>
+															</Grid.ColumnDefinitions>
+															<TextBlock Text="{Binding Marker}"
+																	   Style="{StaticResource SummaryLineMarkerStyle}"/>
+															<TextBlock x:Name="SummaryBodyText"
+																	   Grid.Column="1"
+																	   Text="{Binding Body}"
+																	   Style="{StaticResource SummaryLineTextStyle}"/>
+															<TextBlock x:Name="SummaryWeeklyLootText"
+																	   Grid.Column="1"
+																	   Style="{StaticResource SummaryLineTextStyle}"
+																	   Visibility="Collapsed">
+																<Run Text="{Binding LootTitle}"/>
+																<Run Text=": "/>
+																<InlineUIContainer BaselineAlignment="Center">
+																	<TextBlock Text="{Binding PrimevalCount}"
+																			   FontSize="13"
+																			   FontWeight="SemiBold"
+																			   Foreground="{DynamicResource PrimevalLootTextBrush}"
+																			   Effect="{StaticResource PrimevalLootTextGlowEffect}"/>
+																</InlineUIContainer>
+																<Run Text="/"/>
+																<InlineUIContainer BaselineAlignment="Center">
+																	<TextBlock Text="{Binding EpicCount}"
+																			   FontSize="13"
+																			   FontWeight="SemiBold"
+																			   Foreground="{DynamicResource EpicLootTextBrush}"
+																			   Effect="{StaticResource EpicLootTextGlowEffect}"/>
+																</InlineUIContainer>
+															</TextBlock>
+															<TextBlock x:Name="SummaryDetailedWeeklyLootText"
+																	   Grid.Column="1"
+																	   Style="{StaticResource SummaryLineTextStyle}"
+																	   Visibility="Collapsed">
+																<Run Text="{Binding LootTitle}"/>
+																<Run Text=": 태초 "/>
+																<InlineUIContainer BaselineAlignment="Center">
+																	<TextBlock Text="{Binding PrimevalCount}"
+																			   FontSize="13"
+																			   FontWeight="SemiBold"
+																			   Foreground="{DynamicResource PrimevalLootTextBrush}"
+																			   Effect="{StaticResource PrimevalLootTextGlowEffect}"/>
+																</InlineUIContainer>
+																<Run Text="/에픽 "/>
+																<InlineUIContainer BaselineAlignment="Center">
+																	<TextBlock Text="{Binding EpicCount}"
+																			   FontSize="13"
+																			   FontWeight="SemiBold"
+																			   Foreground="{DynamicResource EpicLootTextBrush}"
+																			   Effect="{StaticResource EpicLootTextGlowEffect}"/>
+																</InlineUIContainer>
+															</TextBlock>
+														</Grid>
+													</Grid>
+													<DataTemplate.Triggers>
+														<DataTrigger Binding="{Binding IsWeeklyLoot}" Value="True">
+															<Setter TargetName="SummaryBodyText" Property="Visibility" Value="Collapsed"/>
+															<Setter TargetName="SummaryWeeklyLootText" Property="Visibility" Value="Visible"/>
+														</DataTrigger>
+														<DataTrigger Binding="{Binding DataContext.IsDetailedLootLayout, RelativeSource={RelativeSource AncestorType=ItemsControl}}" Value="True">
+															<Setter TargetName="SummaryBodyText" Property="Text" Value="{Binding DetailedBody}"/>
+														</DataTrigger>
+														<MultiDataTrigger>
+															<MultiDataTrigger.Conditions>
+																<Condition Binding="{Binding IsWeeklyLoot}" Value="True"/>
+																<Condition Binding="{Binding DataContext.IsDetailedLootLayout, RelativeSource={RelativeSource AncestorType=ItemsControl}}" Value="True"/>
+															</MultiDataTrigger.Conditions>
+															<Setter TargetName="SummaryWeeklyLootText" Property="Visibility" Value="Collapsed"/>
+															<Setter TargetName="SummaryDetailedWeeklyLootText" Property="Visibility" Value="Visible"/>
+														</MultiDataTrigger>
+														<DataTrigger Binding="{Binding IsSeparator}" Value="True">
+															<Setter TargetName="SummarySeparator" Property="Visibility" Value="Visible"/>
+															<Setter TargetName="SummaryTextLine" Property="Visibility" Value="Collapsed"/>
+														</DataTrigger>
+													</DataTemplate.Triggers>
+												</DataTemplate>
+												</ItemsControl.ItemTemplate>
+											</ItemsControl>
+										</StackPanel>
+
+										<Button Content="×"
+												Tag="{Binding}"
+												Style="{StaticResource CardRemoveButtonStyle}"
+												Panel.ZIndex="5"
+												Click="RemoveCharacter_Click"/>
+									</Grid>
+								</Border>
+							</DataTemplate>
+						</ItemsControl.ItemTemplate>
+					</ItemsControl>
+				</ScrollViewer>
+
+			</Grid>
+
+			<Border x:Name="IncompleteSummaryPanel"
+					   Grid.Row="3"
+					Background="{DynamicResource ButtonBackgroundBrush}"
+					CornerRadius="10"
+					Padding="10 8"
+					Margin="0 8 0 0"
+					Visibility="Collapsed">
+				<StackPanel>
+					<Grid Margin="0 0 0 6">
+						<Grid.ColumnDefinitions>
+							<ColumnDefinition Width="*"/>
+							<ColumnDefinition Width="24"/>
+						</Grid.ColumnDefinitions>
+						<TextBlock Text="요약"
+								   Foreground="{DynamicResource SecondaryTextBrush}"
+								   FontSize="12"
+								   FontWeight="SemiBold"
+								   VerticalAlignment="Center"/>
+						<Button x:Name="SummaryPanelToggleButton"
+								Grid.Column="1"
+								Width="22"
+								Height="22"
+								Padding="0"
+								Click="SummaryPanelToggle_Click">
+							<Path x:Name="SummaryPanelToggleIcon"
+								  Data="M 4 7 L 8 11 L 12 7"
+								  Stroke="{DynamicResource SecondaryTextBrush}"
+								  StrokeThickness="1.4"
+								  StrokeStartLineCap="Round"
+								  StrokeEndLineCap="Round"
+								  Stretch="Uniform"
+								  Width="12"
+								  Height="12"/>
+						</Button>
+					</Grid>
+					<Grid x:Name="SummaryPanelBody">
+						<Grid.ColumnDefinitions>
+							<ColumnDefinition x:Name="IncompleteSummaryColumn" Width="*"/>
+							<ColumnDefinition x:Name="SummaryColumnGap" Width="14"/>
+							<ColumnDefinition x:Name="WeeklyLootSummaryColumn" Width="*"/>
+						</Grid.ColumnDefinitions>
+						<StackPanel>
+							<TextBlock Text="미완료 요약"
+									   Foreground="{DynamicResource SecondaryTextBrush}"
+									   FontSize="12"
+									   FontWeight="SemiBold"
+									   Margin="0 0 0 6"/>
+							<ItemsControl x:Name="IncompleteSummaryList">
+								<ItemsControl.ItemTemplate>
+									<DataTemplate>
+										<Grid Margin="0 1 0 4">
+											<Grid.ColumnDefinitions>
+												<ColumnDefinition Width="Auto"/>
+												<ColumnDefinition Width="*"/>
+											</Grid.ColumnDefinitions>
+											<TextBlock Text="{Binding Title}"
+													   Foreground="{DynamicResource PrimaryTextBrush}"
+													   FontSize="13"
+													   FontWeight="SemiBold"
+													   Margin="0 0 10 0"/>
+											<TextBlock Grid.Column="1"
+													   x:Name="IncompleteCharacterSummaryText"
+													   Text="{Binding CharacterSummary}"
+													   Foreground="{DynamicResource TertiaryTextBrush}"
+													   FontSize="13"
+													   TextWrapping="Wrap"/>
+										</Grid>
+										<DataTemplate.Triggers>
+											<DataTrigger Binding="{Binding HasCharacterSummary}" Value="False">
+												<Setter TargetName="IncompleteCharacterSummaryText" Property="Visibility" Value="Collapsed"/>
+											</DataTrigger>
+										</DataTemplate.Triggers>
+									</DataTemplate>
+								</ItemsControl.ItemTemplate>
+							</ItemsControl>
+						</StackPanel>
+						<StackPanel x:Name="WeeklyLootSummarySection"
+									Grid.Column="2">
+							<TextBlock Text="주간 획득 요약"
+									   Foreground="{DynamicResource SecondaryTextBrush}"
+									   FontSize="12"
+									   FontWeight="SemiBold"
+									   Margin="0 0 0 6"/>
+							<ItemsControl x:Name="WeeklyLootSummaryList">
+								<ItemsControl.ItemTemplate>
+									<DataTemplate>
+										<Grid Margin="0 1 0 4">
+											<Grid.ColumnDefinitions>
+												<ColumnDefinition Width="Auto"/>
+												<ColumnDefinition Width="*"/>
+											</Grid.ColumnDefinitions>
+											<TextBlock Text="{Binding Title}"
+													   Foreground="{DynamicResource PrimaryTextBrush}"
+													   FontSize="13"
+													   FontWeight="SemiBold"
+													   Margin="0 0 10 0"/>
+											<TextBlock Grid.Column="1"
+													   Foreground="{DynamicResource TertiaryTextBrush}"
+													   FontSize="13"
+													   TextWrapping="Wrap">
+												<Run Text="태초 "/>
+												<InlineUIContainer BaselineAlignment="Center">
+													<TextBlock Text="{Binding PrimevalCount}"
+															   FontSize="13"
+															   FontWeight="SemiBold"
+															   Foreground="{DynamicResource PrimevalLootTextBrush}"
+															   Effect="{StaticResource PrimevalLootTextGlowEffect}"/>
+												</InlineUIContainer>
+												<Run Text="/에픽 "/>
+												<InlineUIContainer BaselineAlignment="Center">
+													<TextBlock Text="{Binding EpicCount}"
+															   FontSize="13"
+															   FontWeight="SemiBold"
+															   Foreground="{DynamicResource EpicLootTextBrush}"
+															   Effect="{StaticResource EpicLootTextGlowEffect}"/>
+												</InlineUIContainer>
+											</TextBlock>
+										</Grid>
+									</DataTemplate>
+								</ItemsControl.ItemTemplate>
+							</ItemsControl>
+						</StackPanel>
+					</Grid>
+				</StackPanel>
+			</Border>
+
+			<TextBlock x:Name="StatusText"
+					   Grid.Row="4"
+					   Foreground="{DynamicResource TertiaryTextBrush}"
+					   FontSize="13"
+					   Margin="0 14 0 0"
+					   Text=""/>
+
+			<Border x:Name="LoadingOverlay"
+					Grid.RowSpan="5"
+					Margin="-22"
+					Background="{DynamicResource InputDropDownBackgroundBrush}"
+					Opacity="0"
+					Visibility="Collapsed"
+					Panel.ZIndex="35">
+				<Grid>
+					<StackPanel HorizontalAlignment="Center"
+								VerticalAlignment="Center">
+						<Grid Width="42"
+							  Height="42"
+							  HorizontalAlignment="Center"
+							  RenderTransformOrigin="0.5,0.5">
+							<Grid.RenderTransform>
+								<RotateTransform x:Name="LoadingSpinnerRotation"/>
+							</Grid.RenderTransform>
+							<Ellipse Width="34"
+									 Height="34"
+									 Stroke="{DynamicResource InputBorderBrush}"
+									 StrokeThickness="4"
+									 Opacity="0.45"/>
+							<Ellipse Width="34"
+									 Height="34"
+									 Stroke="{DynamicResource PrimaryTextBrush}"
+									 StrokeThickness="4"
+									 StrokeDashArray="1.8 4.2"
+									 StrokeStartLineCap="Round"
+									 StrokeEndLineCap="Round"/>
+						</Grid>
+						<TextBlock x:Name="LoadingOverlayText"
+								   Text=""
+								   Foreground="{DynamicResource PrimaryTextBrush}"
+								   FontSize="13"
+								   FontWeight="SemiBold"
+								   Margin="0 12 0 0"
+								   HorizontalAlignment="Center"/>
+					</StackPanel>
+				</Grid>
+			</Border>
+
+			<Canvas x:Name="DragOverlay"
+					Grid.RowSpan="4"
+					IsHitTestVisible="False"
+					Panel.ZIndex="40">
+				<Canvas x:Name="DropIndicatorClipHost"
+						IsHitTestVisible="False"
+						Visibility="Collapsed">
+					<Border x:Name="DropInsertIndicator"
+							Width="4"
+							Height="120"
+							Opacity="0"
+							Background="{DynamicResource InputFocusedBorderBrush}"
+							CornerRadius="2"/>
+				</Canvas>
+			</Canvas>
+
+			<Border x:Name="DeleteDropZone"
+					Grid.RowSpan="5"
+					Height="156"
+					Margin="-22 0 -22 -22"
+					VerticalAlignment="Bottom"
+					Visibility="Collapsed"
+					Opacity="0"
+					AllowDrop="True"
+					DragEnter="DeleteDropZone_DragEnter"
+					DragOver="DeleteDropZone_DragOver"
+					DragLeave="DeleteDropZone_DragLeave"
+					Drop="DeleteDropZone_Drop"
+					Panel.ZIndex="30">
+				<Border.Background>
+					<LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+						<GradientStop Color="#00E53935" Offset="0"/>
+						<GradientStop Color="#88E53935" Offset="0.46"/>
+						<GradientStop Color="#DDE53935" Offset="1"/>
+					</LinearGradientBrush>
+				</Border.Background>
+				<Grid>
+					<TextBlock Text="삭제"
+							   HorizontalAlignment="Center"
+							   VerticalAlignment="Center"
+							   Foreground="White"
+							   FontSize="22"
+							   FontWeight="Bold"/>
+				</Grid>
+			</Border>
+		</Grid>
+	</Border>
+</Window>
