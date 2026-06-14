@@ -72,7 +72,7 @@
 				</Grid.ColumnDefinitions>
 
 				<StackPanel Grid.Column="0">
-					<TextBlock Text="API Key"
+					<TextBlock Text="개인 API Key"
 							   ToolTip="Neople Developers에서 발급받은 API Key를 입력하세요."
 							   Foreground="{DynamicResource SecondaryTextBrush}"
 							   FontSize="12"
@@ -95,7 +95,13 @@
 							  FontSize="15"
 							  DisplayMemberPath="Label"
 							  SelectedValuePath="Value"
-							  Margin="0 0 0 18"/>
+							  Margin="0 0 0 8"/>
+
+					<CheckBox x:Name="LowPerformanceModeBox"
+							  Content="저성능 모드"
+							  Margin="0 0 0 18"
+							  Checked="LowPerformanceModeBox_Changed"
+							  Unchecked="LowPerformanceModeBox_Changed"/>
 
 					<Grid Margin="0 0 0 18">
 						<Grid.ColumnDefinitions>
@@ -164,7 +170,7 @@
 									  Content="시작 시 자동 갱신"
 									  VerticalAlignment="Center"/>
 							<TextBlock Grid.Column="1"
-									   Text="주기"
+									   Text="자동갱신 주기"
 									   Foreground="{DynamicResource SecondaryTextBrush}"
 									   FontSize="12"
 									   VerticalAlignment="Center"/>
@@ -297,7 +303,7 @@
 								<Run Text="이내 황혼전은 8캐릭 제한을 반영합니다. 나벨은 일반/하드 통합으로 판단하며 하드 나벨은 4캐릭 제한을 반영합니다."/>
 								<LineBreak/>
 								<LineBreak/>
-								<Run Text="명성이 부족한 콘텐츠는 카드에 진행불가 명성으로 표시됩니다."/>
+								<Run Text="명성이 부족한 콘텐츠는 카드에 진행불가로 표시됩니다."/>
 							</TextBlock>
 						</StackPanel>
 					</ScrollViewer>
@@ -307,7 +313,7 @@
 			<StackPanel Grid.Row="2"
 						HorizontalAlignment="Center"
 						Margin="0 18 0 14">
-				<TextBlock Text="@ansancityboy"
+				<TextBlock Text="Made by @ansancityboy"
 						   Foreground="{DynamicResource SecondaryTextBrush}"
 						   Opacity="0.55"
 						   FontSize="11"
@@ -349,9 +355,9 @@
 							</Hyperlink.Style>
 							<Run Text="Powered by"
 								 Foreground="{DynamicResource SecondaryTextBrush}"/>
-							<Run Text=" Neople"
+							<Run Text="Neople"
 								 Foreground="#FFFFA000"/>
-							<Run Text=" OpenAPI"
+							<Run Text="OpenAPI"
 								 Foreground="{DynamicResource PrimaryTextBrush}"/>
 						</Hyperlink>
 					</TextBlock>

@@ -20,10 +20,12 @@ public partial class SettingsWindow : Window
 
 	private readonly bool _isLightTheme;
 	private readonly Action<string>? _previewThemeMode;
+	private readonly Action<bool>? _previewLowPerformanceMode;
 	private readonly Action<string>? _previewCharacterImageMode;
 	private readonly Action<int>? _previewColumns;
 	private readonly Func<string, bool>? _resolveIsLightTheme;
 	private readonly ManualWindowDrag _windowDrag;
+	private bool _lowPerformanceMode;
 	private bool _isUpdatingColumns;
 	private bool _isUpdatingAutoRefreshInterval;
 
@@ -31,6 +33,7 @@ public partial class SettingsWindow : Window
 		string apiKey,
 		WeeklyContentSettings weeklyContents,
 		string themeMode,
+		bool lowPerformanceMode,
 		string characterImageMode,
 		int columns,
 		bool autoRefreshOnStartup,
@@ -38,17 +41,20 @@ public partial class SettingsWindow : Window
 		bool enableUserDataCache,
 		bool isLightTheme,
 		Action<string>? previewThemeMode = null,
+		Action<bool>? previewLowPerformanceMode = null,
 		Action<string>? previewCharacterImageMode = null,
 		Action<int>? previewColumns = null,
 		Func<string, bool>? resolveIsLightTheme = null)
 	{
 		_isLightTheme = isLightTheme;
 		_previewThemeMode = previewThemeMode;
+		_previewLowPerformanceMode = previewLowPerformanceMode;
 		_previewCharacterImageMode = previewCharacterImageMode;
 		_previewColumns = previewColumns;
 		_resolveIsLightTheme = resolveIsLightTheme;
 		InitializeComponent();
 		_windowDrag = new ManualWindowDrag(this);
+		_lowPerformanceMode = lowPerformanceMode;
 		ThemeModeBox.ItemsSource = new List<ThemeModeOption>
 		{
 			new() { Label = "윈도우 테마 따르기", Value = "system" },
@@ -59,6 +65,7 @@ public partial class SettingsWindow : Window
 		if (ThemeModeBox.SelectedValue is null)
 			ThemeModeBox.SelectedValue = "system";
 		ThemeModeBox.SelectionChanged += ThemeModeBox_SelectionChanged;
+		LowPerformanceModeBox.IsChecked = lowPerformanceMode;
 		CharacterImageModeBox.ItemsSource = new List<CharacterImageModeOption>
 		{
 			new() { Label = "켜기", Value = "full" },
@@ -92,11 +99,12 @@ public partial class SettingsWindow : Window
 	protected override void OnSourceInitialized(EventArgs e)
 	{
 		base.OnSourceInitialized(e);
-		WindowBackdrop.Apply(this, _isLightTheme);
+		WindowBackdrop.Apply(this, _isLightTheme, _lowPerformanceMode);
 	}
 
 	public string ApiKey => ApiKeyBox.Text.Trim();
 	public string ThemeMode => ThemeModeBox.SelectedValue as string ?? "system";
+	public bool LowPerformanceMode => LowPerformanceModeBox.IsChecked == true;
 	public string CharacterImageMode => CharacterImageModeBox.SelectedValue as string ?? "full";
 	public int Columns => int.TryParse(ColumnsBox.Text, out var columns)
 		? ClampColumns(columns)
@@ -139,7 +147,16 @@ public partial class SettingsWindow : Window
 		_previewThemeMode?.Invoke(themeMode);
 
 		if (_resolveIsLightTheme is not null)
-			WindowBackdrop.Apply(this, _resolveIsLightTheme(themeMode));
+			WindowBackdrop.Apply(this, _resolveIsLightTheme(themeMode), _lowPerformanceMode);
+	}
+
+	private void LowPerformanceModeBox_Changed(object sender, RoutedEventArgs e)
+	{
+		_lowPerformanceMode = LowPerformanceMode;
+		_previewLowPerformanceMode?.Invoke(_lowPerformanceMode);
+
+		if (_resolveIsLightTheme is not null)
+			WindowBackdrop.Apply(this, _resolveIsLightTheme(ThemeMode), _lowPerformanceMode);
 	}
 
 	private void CharacterImageModeBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)

@@ -1,6 +1,7 @@
 ﻿using System.Text.Json;
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Media;
 
 namespace DNFWeeklyWidget;
 
@@ -15,6 +16,7 @@ public class CharacterRow : INotifyPropertyChanged
     private string _metaSummary = "";
     private string _summary = "";
     private string _imageUrl = "";
+    private ImageSource? _imageSource;
     private string _imageMode = "full";
     private Thickness _compactImageMargin = new(-85, -78, 0, 0);
     private IReadOnlyList<SummaryLine> _summaryLines = [];
@@ -108,12 +110,25 @@ public class CharacterRow : INotifyPropertyChanged
                 return;
 
             _imageUrl = value;
+            ImageSource = CachedImageSourceConverter.GetImageSource(value);
             OnPropertyChanged(nameof(ImageUrl));
             OnPropertyChanged(nameof(HasCharacterImage));
             OnPropertyChanged(nameof(ShowFullCharacterImage));
             OnPropertyChanged(nameof(ShowCompactCharacterImage));
             OnPropertyChanged(nameof(ShowFullImagePlaceholder));
             OnPropertyChanged(nameof(ShowCompactImagePlaceholder));
+        }
+    }
+    public ImageSource? ImageSource
+    {
+        get => _imageSource;
+        private set
+        {
+            if (ReferenceEquals(_imageSource, value))
+                return;
+
+            _imageSource = value;
+            OnPropertyChanged(nameof(ImageSource));
         }
     }
     public string ImageMode
@@ -136,7 +151,7 @@ public class CharacterRow : INotifyPropertyChanged
             OnPropertyChanged(nameof(ShowCompactImagePlaceholder));
         }
     }
-    public bool HasCharacterImage => !string.IsNullOrWhiteSpace(ImageUrl);
+    public bool HasCharacterImage => ImageSource is not null;
     public bool ShowFullImage => ImageMode == "full";
     public bool ShowCompactImage => ImageMode == "compact";
     public bool ShowStandardHeader => ImageMode != "compact";
@@ -429,7 +444,7 @@ public class CharacterRow : INotifyPropertyChanged
         }
         SplitMetaSummary(metaSummary, ref jobSummary, ref fameSummary);
 
-        return new CharacterRow
+        var row = new CharacterRow
         {
             ServerId = cache.ServerId,
             ServerName = string.IsNullOrWhiteSpace(cache.ServerName)
@@ -440,12 +455,20 @@ public class CharacterRow : INotifyPropertyChanged
             Fame = cache.Fame > 0 ? cache.Fame : ParseFame(fameSummary),
             JobSummary = jobSummary,
             FameSummary = fameSummary,
-            BaseSummary = summary,
+            BaseSummary = string.IsNullOrWhiteSpace(cache.BaseSummary) ? summary : cache.BaseSummary,
             Summary = summary,
             ImageUrl = cache.ImagePath,
             CompactImageMargin = GetCompactImageMargin(cache.JobName, jobSummary),
-            CardWidth = cardWidth
+            CardWidth = cardWidth,
+            WeeklyStatus = cache.WeeklyStatus
         };
+
+        if (cache.SummaryLines.Count > 0)
+            row.RestoreSummaryLines(cache.SummaryLines);
+        else if (!string.IsNullOrWhiteSpace(summary))
+            row.RestoreSummaryLines(BuildStyledSummaryLinesFromCachedText(summary));
+
+        return row;
     }
 
     public CachedCharacterCard ToCache()
@@ -460,11 +483,69 @@ public class CharacterRow : INotifyPropertyChanged
             JobSummary = JobSummary,
             FameSummary = FameSummary,
             MetaSummary = MetaSummary,
+            BaseSummary = BaseSummary,
             Summary = Summary,
+            WeeklyStatus = WeeklyStatus,
+            SummaryLines = SummaryLines
+                .Select(CachedSummaryLine.FromSummaryLine)
+                .ToList(),
             ImagePath = ImageUrl,
             CompactImageOffsetX = CompactImageMargin.Left,
             CompactImageOffsetY = CompactImageMargin.Top
         };
+    }
+
+    private void RestoreSummaryLines(IEnumerable<CachedSummaryLine> cachedLines)
+    {
+        var lines = cachedLines
+            .Select(line => line.ToSummaryLine())
+            .ToList();
+        if (lines.Count == 0)
+            return;
+
+        _summaryLines = lines;
+        _summary = string.Join("\n", lines
+            .Where(line => !line.IsSeparator)
+            .Select(line => line.Text));
+    }
+
+    private static IEnumerable<CachedSummaryLine> BuildStyledSummaryLinesFromCachedText(string text)
+    {
+        return BuildPlainSummaryLines(text)
+            .Select(line =>
+            {
+                ApplyCachedStatusLineParts(line);
+                return CachedSummaryLine.FromSummaryLine(line);
+            });
+    }
+
+    private static void ApplyCachedStatusLineParts(SummaryLine line)
+    {
+        if (line.IsWeeklyLoot || line.IsSeparator)
+            return;
+
+        var text = line.Text.Trim();
+        if (string.IsNullOrWhiteSpace(text))
+            return;
+
+        var marker = "";
+        var body = text;
+        var first = text[0].ToString();
+        if (first is "✓" or "·" or "!" or "?")
+        {
+            marker = first;
+            body = text[1..].TrimStart();
+        }
+
+        line.Marker = marker;
+        line.Body = string.IsNullOrWhiteSpace(body) ? text : body;
+        line.DetailedBody = line.Body;
+        line.IsFameLocked = text.Contains("진행불가 명성", StringComparison.OrdinalIgnoreCase);
+        line.IsCleared = !line.IsFameLocked &&
+            (marker == "✓" || text.EndsWith(" 완료", StringComparison.OrdinalIgnoreCase));
+        line.IsLimitedOut = !line.IsFameLocked &&
+            (text.Contains("제한 제외", StringComparison.OrdinalIgnoreCase) ||
+             text.Contains("제외", StringComparison.OrdinalIgnoreCase));
     }
 }
 
@@ -534,10 +615,67 @@ public class CachedCharacterCard
 	public string JobSummary { get; set; } = "";
 	public string FameSummary { get; set; } = "";
 	public string MetaSummary { get; set; } = "";
+	public string BaseSummary { get; set; } = "";
 	public string Summary { get; set; } = "";
+	public CharacterWeeklyStatus? WeeklyStatus { get; set; }
+	public List<CachedSummaryLine> SummaryLines { get; set; } = new();
 	public string ImagePath { get; set; } = "";
 	public double? CompactImageOffsetX { get; set; }
 	public double? CompactImageOffsetY { get; set; }
+}
+
+public class CachedSummaryLine
+{
+	public string Text { get; set; } = "";
+	public string Marker { get; set; } = "";
+	public string Body { get; set; } = "";
+	public string DetailedBody { get; set; } = "";
+	public bool IsWeeklyLoot { get; set; }
+	public string LootTitle { get; set; } = "";
+	public int PrimevalCount { get; set; }
+	public int EpicCount { get; set; }
+	public bool IsCleared { get; set; }
+	public bool IsLimitedOut { get; set; }
+	public bool IsFameLocked { get; set; }
+	public bool IsSeparator { get; set; }
+
+	public static CachedSummaryLine FromSummaryLine(SummaryLine line)
+	{
+		return new CachedSummaryLine
+		{
+			Text = line.Text,
+			Marker = line.Marker,
+			Body = line.Body,
+			DetailedBody = line.DetailedBody,
+			IsWeeklyLoot = line.IsWeeklyLoot,
+			LootTitle = line.LootTitle,
+			PrimevalCount = line.PrimevalCount,
+			EpicCount = line.EpicCount,
+			IsCleared = line.IsCleared,
+			IsLimitedOut = line.IsLimitedOut,
+			IsFameLocked = line.IsFameLocked,
+			IsSeparator = line.IsSeparator
+		};
+	}
+
+	public SummaryLine ToSummaryLine()
+	{
+		return new SummaryLine
+		{
+			Text = Text,
+			Marker = Marker,
+			Body = Body,
+			DetailedBody = DetailedBody,
+			IsWeeklyLoot = IsWeeklyLoot,
+			LootTitle = LootTitle,
+			PrimevalCount = PrimevalCount,
+			EpicCount = EpicCount,
+			IsCleared = IsCleared,
+			IsLimitedOut = IsLimitedOut,
+			IsFameLocked = IsFameLocked,
+			IsSeparator = IsSeparator
+		};
+	}
 }
 
 public class CharacterSearchItem

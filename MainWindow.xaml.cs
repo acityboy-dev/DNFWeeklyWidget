@@ -1,9 +1,12 @@
 ﻿using System.ComponentModel;
 using System.IO;
+using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Net.Http;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -23,7 +26,7 @@ public partial class MainWindow : Window
 	private const double CardLayoutSafetyWidth = 0.0;
 	private const double DeleteDropZoneRevealDistance = 260.0;
 	private const double DropIndicatorFadeMilliseconds = 140.0;
-	private const double SmoothScrollWheelStep = 112.0;
+	private const double CardScrollWheelStep = 168.0;
 
 	private static class LogText
 	{
@@ -33,17 +36,18 @@ public partial class MainWindow : Window
 		public const string ImportAdventureLoading = "던담에서 불러오는 중입니다.";
 		public const string SearchingAdventure = "던담에서 모험단을 검색하는 중입니다.";
 		public const string NoAdventureCharacters = "던담에서 불러올 캐릭터가 없습니다. 모험단명이 맞는지 확인하세요.";
-		public const string SettingsSaved = "설정을 저장했습니다.";
+		public const string SettingsSavedPrefix = "설정을 저장했습니다.";
 		public const string EnterApiKey = "API Key를 입력하세요.";
 		public const string AddCharacterPrompt = "캐릭터를 추가하세요.";
 		public const string RefreshLoading = "갱신 중입니다.";
-		public const string CardOrderSaved = "카드 순서를 저장했습니다.";
+		public const string CardOrderSavedPrefix = "카드 순서를 저장했습니다.";
 		public const string IncompleteFilterOn = "미완료 콘텐츠가 있는 카드만 표시합니다.";
 		public const string IncompleteFilterOff = "전체 카드를 표시합니다.";
 		public const string FameSortOn = "명성순 자동 정렬을 켰습니다.";
 		public const string FameSortOff = "명성순 자동 정렬을 껐습니다.";
 		public const string AllCharactersCleared = "전체 카드 엔트리를 삭제했습니다.";
 		public const string UserDataCacheDisabled = "사용자 데이터 저장이 꺼져 있어 이번 실행의 변경사항은 저장되지 않습니다.";
+		public const string LastPresetCannotBeRemoved = "마지막 프리셋은 삭제할 수 없습니다.";
 
 		public static string DuplicateCharacter(string characterName) =>
 			$"{characterName} 캐릭터는 이미 추가되어 있습니다.";
@@ -67,13 +71,22 @@ public partial class MainWindow : Window
 			$"저장된 캐릭터 {count}개를 갱신하는 중입니다.";
 
 		public static string LastRefresh(DateTime refreshedAt) =>
-			$"마지막 갱신: {refreshedAt:HH:mm:ss}";
+			$"갱신 완료: {refreshedAt:HH:mm:ss}";
+
+		public static string SettingsSaved(DateTime savedAt) =>
+			$"{SettingsSavedPrefix}: {savedAt:HH:mm:ss}";
+
+		public static string CardOrderSaved(DateTime savedAt) =>
+			$"{CardOrderSavedPrefix}: {savedAt:HH:mm:ss}";
 
 		public static string CachedCardsLoaded(int count) =>
 			$"저장된 카드 {count}개를 불러왔습니다.";
 
 		public static string CharacterRemoved(string characterName) =>
 			$"{characterName} 캐릭터를 제거했습니다.";
+
+		public static string PresetSelected(string presetName) =>
+			$"{presetName} 프리셋을 열었습니다.";
 	}
 
 	private readonly record struct DropIndicatorPosition(double X, double Y, double Height);
@@ -111,25 +124,19 @@ public partial class MainWindow : Window
 	private bool _isRestoringWindowPlacement;
 	private bool _isSummaryPanelExpanded = true;
 	private bool _hasPendingSettingsSave;
+	private bool _isUpdatingPresetList;
+	private bool _suppressNextPresetPanelClick;
+	private bool _isMutatingPresets;
 	private List<CharacterRow> _allCharacterRows = new();
+	private readonly ObservableCollection<CharacterRow> _characterRows = new();
+	private readonly Dictionary<string, ObservableCollection<CharacterRow>> _presetRowCollections = new();
+	private readonly object _settingsSaveQueueLock = new();
+	private Task _settingsSaveQueue = Task.CompletedTask;
+	private int _characterRenderGeneration;
 	private int _busyOverlayDepth;
 	private int _loadingOverlayGeneration;
-	private bool _isSmoothScrollAnimating;
-	private double _smoothScrollTarget;
 	private double _lastCardWidth;
-
-	private static readonly DependencyProperty SmoothScrollOffsetProperty =
-		DependencyProperty.Register(
-			nameof(SmoothScrollOffset),
-			typeof(double),
-			typeof(MainWindow),
-			new PropertyMetadata(0.0, OnSmoothScrollOffsetChanged));
-
-	private double SmoothScrollOffset
-	{
-		get => (double)GetValue(SmoothScrollOffsetProperty);
-		set => SetValue(SmoothScrollOffsetProperty, value);
-	}
+	private CardEntryPreset CurrentPreset => _settings.ActivePreset;
 
 	public MainWindow()
 	{
@@ -137,6 +144,7 @@ public partial class MainWindow : Window
 		_windowDrag = new ManualWindowDrag(this);
 		_settings = AppSettings.Load();
 		_settings.AutoSortByFame = false;
+		_settings.EnsurePresets();
 		RestoreWindowPlacement();
 		_themeOverrideIsLight = ThemeModeToOverride(_settings.ThemeMode);
 		ApplyCurrentTheme();
@@ -144,6 +152,7 @@ public partial class MainWindow : Window
 
 		ConfigureTrayIcon();
 
+		CharacterList.ItemsSource = _characterRows;
 		ServerComboBox.ItemsSource = ServerOptions.All;
 		ServerComboBox.SelectedValue = string.IsNullOrWhiteSpace(_settings.ServerId) ? "cain" : _settings.ServerId;
 		if (ServerComboBox.SelectedValue is null)
@@ -153,6 +162,7 @@ public partial class MainWindow : Window
 		CharacterList.Tag = _settings.Columns;
 		ApplyCompactMode();
 		UpdateToolbarOptionButtons();
+		UpdatePresetList();
 		LoadCachedCharacterRows();
 
 		ApplyAutoRefreshInterval();
@@ -166,10 +176,8 @@ public partial class MainWindow : Window
 			Loaded += async (_, _) => await RefreshAsync();
 	}
 
-	private static void OnSmoothScrollOffsetChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+	private void CharacterScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e)
 	{
-		if (d is MainWindow window)
-			window.CharacterScrollViewer.ScrollToVerticalOffset((double)e.NewValue);
 	}
 
 	private void CharacterScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
@@ -177,47 +185,14 @@ public partial class MainWindow : Window
 		if (CharacterScrollViewer.ScrollableHeight <= 0)
 			return;
 
-		var wasAnimating = _isSmoothScrollAnimating;
-		var currentOffset = CharacterScrollViewer.VerticalOffset;
-		var targetBase = wasAnimating ? _smoothScrollTarget : currentOffset;
-
-		BeginAnimation(SmoothScrollOffsetProperty, null);
-		SmoothScrollOffset = currentOffset;
-
 		var wheelSteps = e.Delta / 120.0;
-		_smoothScrollTarget = Math.Clamp(
-			targetBase - wheelSteps * SmoothScrollWheelStep,
+		var targetOffset = Math.Clamp(
+			CharacterScrollViewer.VerticalOffset - wheelSteps * CardScrollWheelStep,
 			0,
 			CharacterScrollViewer.ScrollableHeight);
 
-		var animation = new DoubleAnimation
-		{
-			To = _smoothScrollTarget,
-			Duration = TimeSpan.FromMilliseconds(240),
-			EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
-			FillBehavior = FillBehavior.HoldEnd
-		};
-		animation.Completed += (_, _) =>
-		{
-			_isSmoothScrollAnimating = false;
-			_smoothScrollTarget = CharacterScrollViewer.VerticalOffset;
-		};
-
-		_isSmoothScrollAnimating = true;
-		BeginAnimation(SmoothScrollOffsetProperty, animation, HandoffBehavior.SnapshotAndReplace);
+		CharacterScrollViewer.ScrollToVerticalOffset(targetOffset);
 		e.Handled = true;
-	}
-
-	private void CharacterScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e)
-	{
-		if (Math.Abs(e.VerticalChange) < 0.01)
-			return;
-
-		if (_isSmoothScrollAnimating)
-			return;
-
-		_smoothScrollTarget = CharacterScrollViewer.VerticalOffset;
-		SmoothScrollOffset = CharacterScrollViewer.VerticalOffset;
 	}
 
 	private void ShowLoadingOverlay(string message)
@@ -359,16 +334,20 @@ public partial class MainWindow : Window
 
 	protected override void OnClosing(CancelEventArgs e)
 	{
-		CancelPendingSettingsSave();
-		SaveWindowPlacement();
-
 		if (!_isExitRequested)
 		{
+			CancelPendingSettingsSave();
+			SaveWindowPlacement();
 			e.Cancel = true;
 			Hide();
 			return;
 		}
 
+		FlushPendingSettingsSave();
+		PersistCurrentPresetFromRows();
+		SaveWindowPlacement();
+		SaveSettings();
+		WaitForQueuedSettingsSave();
 		base.OnClosing(e);
 	}
 
@@ -402,7 +381,7 @@ public partial class MainWindow : Window
 		var isLightTheme = CurrentIsLightTheme;
 		ApplyTheme(isLightTheme);
 		ApplyDwmTheme(hwnd, isLightTheme);
-		ApplyAccentAcrylic(hwnd, isLightTheme);
+		ApplyAccentAcrylic(hwnd, isLightTheme, _settings.LowPerformanceMode);
 	}
 
 	private bool CurrentIsLightTheme => _themeOverrideIsLight ?? IsWindowsLightTheme();
@@ -416,6 +395,12 @@ public partial class MainWindow : Window
 	{
 		_themeOverrideIsLight = ThemeModeToOverride(themeMode);
 		UpdateThemeMenuChecks();
+		ApplyCurrentTheme();
+	}
+
+	private void PreviewLowPerformanceMode(bool lowPerformanceMode)
+	{
+		_settings.LowPerformanceMode = lowPerformanceMode;
 		ApplyCurrentTheme();
 	}
 
@@ -470,25 +455,38 @@ public partial class MainWindow : Window
 
 	private void ApplyTheme(bool isLightTheme)
 	{
+		var lowPerformance = _settings.LowPerformanceMode;
 		SetThemeBrush("PrimaryTextBrush", isLightTheme ? MediaColor.FromRgb(0x11, 0x11, 0x11) : Colors.White);
 		SetThemeBrush("SecondaryTextBrush", isLightTheme ? MediaColor.FromArgb(0xAA, 0x00, 0x00, 0x00) : MediaColor.FromArgb(0x99, 0xFF, 0xFF, 0xFF));
 		SetThemeBrush("TertiaryTextBrush", isLightTheme ? MediaColor.FromArgb(0x99, 0x00, 0x00, 0x00) : MediaColor.FromArgb(0xAA, 0xFF, 0xFF, 0xFF));
 		SetThemeBrush("CompletedTextBrush", isLightTheme ? MediaColor.FromRgb(0x1F, 0x7A, 0x3A) : MediaColor.FromRgb(0x7E, 0xDC, 0x9A));
 		SetThemeBrush("BlockedTextBrush", isLightTheme ? MediaColor.FromRgb(0xC8, 0x2B, 0x2B) : MediaColor.FromRgb(0xFF, 0x6B, 0x6B));
-		SetThemeBrush("CardBackgroundBrush", isLightTheme ? MediaColor.FromArgb(0x2E, 0xFF, 0xFF, 0xFF) : MediaColor.FromArgb(0x22, 0xFF, 0xFF, 0xFF));
+		SetThemeBrush("CardBackgroundBrush", lowPerformance
+			? isLightTheme ? MediaColor.FromArgb(0xF4, 0xE9, 0xEA, 0xEC) : MediaColor.FromArgb(0xF2, 0x25, 0x27, 0x2D)
+			: isLightTheme ? MediaColor.FromArgb(0x16, 0x00, 0x00, 0x00) : MediaColor.FromArgb(0x22, 0xFF, 0xFF, 0xFF));
 		SetThemeBrush("RemoveButtonBackgroundBrush", isLightTheme ? MediaColor.FromArgb(0xCC, 0xF5, 0xF5, 0xF5) : MediaColor.FromArgb(0xDD, 0x2A, 0x2D, 0x33));
 		SetThemeBrush("RemoveButtonBorderBrush", isLightTheme ? MediaColor.FromArgb(0x44, 0x00, 0x00, 0x00) : MediaColor.FromArgb(0x55, 0xFF, 0xFF, 0xFF));
-		SetThemeBrush("ButtonBackgroundBrush", isLightTheme ? MediaColor.FromArgb(0x0E, 0x00, 0x00, 0x00) : MediaColor.FromArgb(0x14, 0xFF, 0xFF, 0xFF));
-		SetThemeBrush("ButtonHoverBackgroundBrush", isLightTheme ? MediaColor.FromArgb(0x18, 0x00, 0x00, 0x00) : MediaColor.FromArgb(0x22, 0xFF, 0xFF, 0xFF));
-		SetThemeBrush("ButtonPressedBackgroundBrush", isLightTheme ? MediaColor.FromArgb(0x28, 0x00, 0x00, 0x00) : MediaColor.FromArgb(0x33, 0xFF, 0xFF, 0xFF));
+		SetThemeBrush("ButtonBackgroundBrush", lowPerformance
+			? isLightTheme ? MediaColor.FromArgb(0xF0, 0xEF, 0xEF, 0xEF) : MediaColor.FromArgb(0xF0, 0x30, 0x33, 0x39)
+			: isLightTheme ? MediaColor.FromArgb(0x0E, 0x00, 0x00, 0x00) : MediaColor.FromArgb(0x14, 0xFF, 0xFF, 0xFF));
+		SetThemeBrush("ButtonHoverBackgroundBrush", lowPerformance
+			? isLightTheme ? MediaColor.FromArgb(0xFF, 0xE6, 0xE6, 0xE6) : MediaColor.FromArgb(0xFF, 0x3A, 0x3D, 0x44)
+			: isLightTheme ? MediaColor.FromArgb(0x18, 0x00, 0x00, 0x00) : MediaColor.FromArgb(0x22, 0xFF, 0xFF, 0xFF));
+		SetThemeBrush("ButtonPressedBackgroundBrush", lowPerformance
+			? isLightTheme ? MediaColor.FromArgb(0xFF, 0xDC, 0xDC, 0xDC) : MediaColor.FromArgb(0xFF, 0x44, 0x47, 0x4F)
+			: isLightTheme ? MediaColor.FromArgb(0x28, 0x00, 0x00, 0x00) : MediaColor.FromArgb(0x33, 0xFF, 0xFF, 0xFF));
 		SetThemeBrush("ScrollThumbBrush", isLightTheme ? MediaColor.FromArgb(0x55, 0x00, 0x00, 0x00) : MediaColor.FromArgb(0x66, 0xFF, 0xFF, 0xFF));
 		SetThemeBrush("ScrollThumbHoverBrush", isLightTheme ? MediaColor.FromArgb(0x75, 0x00, 0x00, 0x00) : MediaColor.FromArgb(0x88, 0xFF, 0xFF, 0xFF));
 		SetThemeBrush("ScrollThumbPressedBrush", isLightTheme ? MediaColor.FromArgb(0x95, 0x00, 0x00, 0x00) : MediaColor.FromArgb(0xAA, 0xFF, 0xFF, 0xFF));
-		SetThemeBrush("InputBackgroundBrush", isLightTheme ? MediaColor.FromArgb(0x38, 0xFF, 0xFF, 0xFF) : MediaColor.FromArgb(0x18, 0x00, 0x00, 0x00));
+		SetThemeBrush("InputBackgroundBrush", lowPerformance
+			? isLightTheme ? MediaColor.FromArgb(0xFF, 0xFA, 0xFA, 0xFA) : MediaColor.FromArgb(0xFF, 0x21, 0x23, 0x28)
+			: isLightTheme ? MediaColor.FromArgb(0x38, 0xFF, 0xFF, 0xFF) : MediaColor.FromArgb(0x18, 0x00, 0x00, 0x00));
 		SetThemeBrush("InputBorderBrush", isLightTheme ? MediaColor.FromArgb(0x28, 0x00, 0x00, 0x00) : MediaColor.FromArgb(0x44, 0xFF, 0xFF, 0xFF));
 		SetThemeBrush("InputFocusedBorderBrush", isLightTheme ? MediaColor.FromArgb(0x66, 0x00, 0x00, 0x00) : MediaColor.FromArgb(0x88, 0xFF, 0xFF, 0xFF));
 		SetThemeBrush("InputSelectionBrush", isLightTheme ? MediaColor.FromArgb(0x66, 0x1E, 0x6F, 0xC8) : MediaColor.FromArgb(0x66, 0x88, 0xC7, 0xFF));
-		SetThemeBrush("InputDropDownBackgroundBrush", isLightTheme ? MediaColor.FromArgb(0xF0, 0xF8, 0xF8, 0xF8) : MediaColor.FromArgb(0xF0, 0x2A, 0x2D, 0x33));
+		SetThemeBrush("InputDropDownBackgroundBrush", lowPerformance
+			? isLightTheme ? MediaColor.FromArgb(0xFF, 0xF8, 0xF8, 0xF8) : MediaColor.FromArgb(0xFF, 0x2A, 0x2D, 0x33)
+			: isLightTheme ? MediaColor.FromArgb(0xF0, 0xF8, 0xF8, 0xF8) : MediaColor.FromArgb(0xF0, 0x2A, 0x2D, 0x33));
 		ApplyLootTextTheme(isLightTheme);
 	}
 
@@ -510,57 +508,12 @@ public partial class MainWindow : Window
 
 	private void ApplyLootTextTheme(bool isLightTheme)
 	{
-		SetThemeResource("PrimevalLootTextBrush", CreatePrimevalLootBrush(isLightTheme));
+		SetThemeBrush("PrimevalLootTextBrush", isLightTheme
+			? MediaColor.FromRgb(0x12, 0x70, 0xA6)
+			: MediaColor.FromRgb(0x58, 0xC8, 0xFA));
 		SetThemeBrush("EpicLootTextBrush", isLightTheme
 			? MediaColor.FromRgb(0xE6, 0x66, 0x00)
 			: MediaColor.FromRgb(0xFF, 0xB4, 0x00));
-
-		ApplyLootGlowTheme(
-			"PrimevalLootTextGlowEffect",
-			isLightTheme ? MediaColor.FromRgb(0x00, 0xB8, 0xE6) : MediaColor.FromRgb(0x58, 0xC8, 0xFA),
-			isLightTheme);
-		ApplyLootGlowTheme(
-			"EpicLootTextGlowEffect",
-			isLightTheme ? MediaColor.FromRgb(0xE6, 0x66, 0x00) : MediaColor.FromRgb(0xFF, 0xB4, 0x00),
-			isLightTheme);
-	}
-
-	private void ApplyLootGlowTheme(string key, MediaColor color, bool isLightTheme)
-	{
-		if (Resources[key] is not System.Windows.Media.Effects.DropShadowEffect glow)
-			return;
-
-		glow.Color = color;
-		glow.BlurRadius = isLightTheme ? 2.5 : 3.5;
-		glow.Opacity = isLightTheme ? 0.18 : 0.24;
-		glow.ShadowDepth = 0;
-	}
-
-	private static LinearGradientBrush CreatePrimevalLootBrush(bool isLightTheme)
-	{
-		var brush = new LinearGradientBrush
-		{
-			StartPoint = new System.Windows.Point(0, 0),
-			EndPoint = new System.Windows.Point(0, 1)
-		};
-
-		if (isLightTheme)
-		{
-			brush.GradientStops.Add(new GradientStop(MediaColor.FromRgb(0x1F, 0x8F, 0x31), 0));
-			brush.GradientStops.Add(new GradientStop(MediaColor.FromRgb(0x16, 0x82, 0x5D), 0.34));
-			brush.GradientStops.Add(new GradientStop(MediaColor.FromRgb(0x12, 0x70, 0xA6), 0.68));
-			brush.GradientStops.Add(new GradientStop(MediaColor.FromRgb(0x18, 0x3F, 0x86), 1));
-		}
-		else
-		{
-			brush.GradientStops.Add(new GradientStop(MediaColor.FromRgb(0x5A, 0xFF, 0x62), 0));
-			brush.GradientStops.Add(new GradientStop(MediaColor.FromRgb(0x59, 0xE9, 0x9D), 0.34));
-			brush.GradientStops.Add(new GradientStop(MediaColor.FromRgb(0x58, 0xC8, 0xFA), 0.68));
-			brush.GradientStops.Add(new GradientStop(MediaColor.FromRgb(0x3A, 0x67, 0xBF), 1));
-		}
-
-		brush.Freeze();
-		return brush;
 	}
 
 	private void SetThemeResource(string key, object value)
@@ -611,18 +564,20 @@ public partial class MainWindow : Window
 			sizeof(int));
 	}
 
-	private static void ApplyAccentAcrylic(IntPtr hwnd, bool isLightTheme)
+	private static void ApplyAccentAcrylic(IntPtr hwnd, bool isLightTheme, bool lowPerformanceMode)
 	{
 		if (hwnd == IntPtr.Zero)
 			return;
 
 		var accent = new ACCENT_POLICY
 		{
-			AccentState = ACCENT_STATE.ACCENT_ENABLE_ACRYLICBLURBEHIND,
-			AccentFlags = 2,
+			AccentState = lowPerformanceMode
+				? ACCENT_STATE.ACCENT_ENABLE_GRADIENT
+				: ACCENT_STATE.ACCENT_ENABLE_ACRYLICBLURBEHIND,
+			AccentFlags = lowPerformanceMode ? 0 : 2,
 			GradientColor = isLightTheme
-				? ToAbgr(0x55, 0xF8, 0xF8, 0xF8)
-				: ToAbgr(0x55, 0x20, 0x22, 0x28),
+				? ToAbgr(lowPerformanceMode ? (byte)0xFA : (byte)0x55, 0xF8, 0xF8, 0xF8)
+				: ToAbgr(lowPerformanceMode ? (byte)0xFA : (byte)0x55, 0x20, 0x22, 0x28),
 			AnimationId = 0
 		};
 
@@ -670,7 +625,7 @@ public partial class MainWindow : Window
 			return;
 		}
 
-		if (_settings.Characters.Any(x =>
+		if (CurrentPreset.Characters.Any(x =>
 				string.Equals(x.ServerId, serverId, StringComparison.OrdinalIgnoreCase) &&
 				string.Equals(x.CharacterName, name, StringComparison.OrdinalIgnoreCase)))
 		{
@@ -684,7 +639,7 @@ public partial class MainWindow : Window
 			CharacterName = name
 		};
 
-		_settings.Characters.Add(saved);
+		CurrentPreset.Characters.Add(saved);
 		SaveSettings();
 		CharacterNameBox.Text = "";
 
@@ -698,6 +653,15 @@ public partial class MainWindow : Window
 
 		e.Handled = true;
 		await AddCharacterAsync();
+	}
+
+	private void AdventureNameBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+	{
+		if (e.Key != Key.Enter)
+			return;
+
+		e.Handled = true;
+		ImportAdventure_Click(sender, e);
 	}
 
 	private void HudTextBox_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
@@ -717,6 +681,15 @@ public partial class MainWindow : Window
 		fields[nextIndex].SelectAll();
 	}
 
+	private async void Window_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+	{
+		if (e.Key != Key.F5)
+			return;
+
+		e.Handled = true;
+		await RefreshAsync();
+	}
+
 	private async void RemoveCharacter_Click(object sender, RoutedEventArgs e)
 	{
 		if (sender is not System.Windows.Controls.Button { Tag: CharacterRow row })
@@ -734,7 +707,7 @@ public partial class MainWindow : Window
 	{
 		_settings.IsCompactMode = !_settings.IsCompactMode;
 		SaveSettings();
-		ApplyCompactMode();
+		ApplyCompactMode(animate: true);
 	}
 
 	private void IncompleteFilter_Click(object sender, RoutedEventArgs e)
@@ -767,20 +740,332 @@ public partial class MainWindow : Window
 			"전체 카드 삭제",
 			"등록된 캐릭터 카드, 카드 배열, 캐시된 카드 정보를 모두 비웁니다.",
 			"삭제",
-			CurrentIsLightTheme)
+			CurrentIsLightTheme,
+			_settings.LowPerformanceMode)
 		{
 			Owner = this
 		};
 		if (dialog.ShowDialog() != true)
 			return;
 
-		_settings.Characters.Clear();
-		_settings.CachedCards.Clear();
+		CurrentPreset.Characters.Clear();
+		CurrentPreset.CachedCards.Clear();
 		_allCharacterRows.Clear();
 		RenderCharacterRows();
 		ClearIncompleteContentSummary();
 		SaveSettings();
 		StatusText.Text = LogText.AllCharactersCleared;
+	}
+
+	private void PresetPanelButton_Click(object sender, RoutedEventArgs e)
+	{
+		if (_suppressNextPresetPanelClick)
+		{
+			_suppressNextPresetPanelClick = false;
+			e.Handled = true;
+			return;
+		}
+
+		UpdatePresetList();
+		PresetPanelPopup.IsOpen = !PresetPanelPopup.IsOpen;
+		UpdatePresetPanelButtonState(PresetPanelPopup.IsOpen);
+	}
+
+	private void PresetPanelButton_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+	{
+		if (!PresetPanelPopup.IsOpen)
+			return;
+
+		PresetPanelPopup.IsOpen = false;
+		UpdatePresetPanelButtonState(isOpen: false);
+		_suppressNextPresetPanelClick = true;
+		e.Handled = true;
+	}
+
+	private void PresetPanelPopup_Opened(object sender, EventArgs e)
+	{
+		UpdatePresetPanelButtonState(isOpen: true);
+		PresetPanelPopup.VerticalOffset = Math.Max(44, (ActualHeight - PresetPanelHost.ActualHeight) / 2);
+
+		if (PresetPanelHost.RenderTransform is TranslateTransform transform)
+		{
+			transform.BeginAnimation(TranslateTransform.XProperty, null);
+			transform.X = 12;
+			transform.BeginAnimation(
+				TranslateTransform.XProperty,
+				new DoubleAnimation(0, TimeSpan.FromMilliseconds(150))
+				{
+					EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+				});
+		}
+	}
+
+	private void PresetPanelPopup_Closed(object sender, EventArgs e)
+	{
+		UpdatePresetPanelButtonState(isOpen: false);
+		if (PresetPanelButton.IsMouseOver && Mouse.LeftButton == MouseButtonState.Pressed)
+			_suppressNextPresetPanelClick = true;
+	}
+
+	private void UpdatePresetPanelButtonState(bool isOpen)
+	{
+		PresetPanelArrow.Data = Geometry.Parse(isOpen
+			? "M 7 4 L 11 8 L 7 12"
+			: "M 11 4 L 7 8 L 11 12");
+	}
+
+	private async void PresetListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+	{
+		if (_isUpdatingPresetList ||
+			_isMutatingPresets ||
+			PresetListBox.SelectedItem is not CardEntryPreset preset ||
+			preset.Id == _settings.ActivePresetId)
+		{
+			return;
+		}
+
+		PersistCurrentPresetFromRows();
+		_settings.ActivePresetId = preset.Id;
+		_settings.EnsurePresets();
+		var selectedPresetId = preset.Id;
+		ClearIncompleteContentSummary();
+		if (!await RestoreActivePresetRowsAsync(deferSummary: true, batchRender: true))
+		{
+			if (_settings.ActivePresetId != selectedPresetId)
+				return;
+
+			_allCharacterRows.Clear();
+			await RenderCharacterRowsAsync(batch: true);
+		}
+
+		if (_settings.ActivePresetId != selectedPresetId)
+			return;
+
+		ScheduleSettingsSave();
+		StatusText.Text = LogText.PresetSelected(CurrentPreset.Name);
+	}
+
+	private async void AddPreset_Click(object sender, RoutedEventArgs e)
+	{
+		if (_isMutatingPresets)
+			return;
+
+		_isMutatingPresets = true;
+		try
+		{
+			PersistCurrentPresetFromRows();
+			var nextNumber = _settings.Presets.Count + 1;
+			var preset = new CardEntryPreset
+			{
+				Id = Guid.NewGuid().ToString("N"),
+				Name = $"프리셋 {nextNumber}"
+			};
+
+			_settings.Presets.Add(preset);
+			_settings.ActivePresetId = preset.Id;
+			_settings.EnsurePresets();
+			_allCharacterRows.Clear();
+			_presetRowCollections[preset.Id] = new ObservableCollection<CharacterRow>();
+			await RenderCharacterRowsAsync(batch: true);
+			ClearIncompleteContentSummary();
+			UpdatePresetList();
+			ScheduleSettingsSave();
+			StatusText.Text = LogText.PresetSelected(preset.Name);
+		}
+		finally
+		{
+			_isMutatingPresets = false;
+		}
+	}
+
+	private async void RemovePreset_Click(object sender, RoutedEventArgs e)
+	{
+		if (_isMutatingPresets)
+			return;
+
+		if (_settings.Presets.Count <= 1)
+		{
+			StatusText.Text = LogText.LastPresetCannotBeRemoved;
+			return;
+		}
+
+		_isMutatingPresets = true;
+		try
+		{
+			var preset = PresetListBox.SelectedItem as CardEntryPreset ?? CurrentPreset;
+			var removeIndex = _settings.Presets.FindIndex(x => x.Id == preset.Id);
+			if (removeIndex < 0)
+				return;
+
+			_settings.Presets.RemoveAt(removeIndex);
+			if (_settings.ActivePresetId == preset.Id)
+			{
+				var nextIndex = Math.Clamp(removeIndex, 0, _settings.Presets.Count - 1);
+				_settings.ActivePresetId = _settings.Presets[nextIndex].Id;
+				ClearIncompleteContentSummary();
+				if (!await RestoreActivePresetRowsAsync(deferSummary: true, batchRender: true))
+				{
+					_allCharacterRows.Clear();
+					await RenderCharacterRowsAsync(batch: true);
+				}
+			}
+			_presetRowCollections.Remove(preset.Id);
+
+			_settings.EnsurePresets();
+			UpdatePresetList();
+			ScheduleSettingsSave();
+			StatusText.Text = $"{preset.Name} 프리셋을 삭제했습니다.";
+		}
+		finally
+		{
+			_isMutatingPresets = false;
+		}
+	}
+
+	private void EditPreset_Click(object sender, RoutedEventArgs e)
+	{
+		if (sender is not System.Windows.Controls.Button { Tag: CardEntryPreset preset })
+			return;
+
+		e.Handled = true;
+		foreach (var item in _settings.Presets)
+			item.IsEditing = false;
+
+		preset.IsEditing = true;
+		PresetListBox.SelectedItem = preset;
+		Dispatcher.BeginInvoke(() => FocusPresetNameBox(preset), DispatcherPriority.Loaded);
+	}
+
+	private void PresetNameBox_LostFocus(object sender, RoutedEventArgs e)
+	{
+		if (sender is FrameworkElement { DataContext: CardEntryPreset preset })
+			FinishPresetNameEdit(preset);
+	}
+
+	private void PresetNameBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+	{
+		if (sender is not FrameworkElement { DataContext: CardEntryPreset preset })
+			return;
+
+		if (e.Key != Key.Enter && e.Key != Key.Escape)
+			return;
+
+		e.Handled = true;
+		FinishPresetNameEdit(preset);
+		Keyboard.ClearFocus();
+	}
+
+	private void FinishPresetNameEdit(CardEntryPreset preset)
+	{
+		preset.Name = string.IsNullOrWhiteSpace(preset.Name)
+			? "프리셋"
+			: preset.Name.Trim();
+		preset.IsEditing = false;
+		SaveSettings();
+	}
+
+	private void FocusPresetNameBox(CardEntryPreset preset)
+	{
+		if (!preset.IsEditing || !_settings.Presets.Contains(preset))
+			return;
+
+		PresetListBox.ScrollIntoView(preset);
+		PresetListBox.UpdateLayout();
+
+		if (PresetListBox.ItemContainerGenerator.ContainerFromItem(preset) is not DependencyObject container)
+		{
+			Dispatcher.BeginInvoke(() => FocusPresetNameBox(preset), DispatcherPriority.ContextIdle);
+			return;
+		}
+
+		var textBox = FindDescendant<System.Windows.Controls.TextBox>(container);
+		if (textBox is null)
+		{
+			Dispatcher.BeginInvoke(() => FocusPresetNameBox(preset), DispatcherPriority.ContextIdle);
+			return;
+		}
+
+		textBox.Focus();
+		Keyboard.Focus(textBox);
+		textBox.SelectAll();
+	}
+
+	private static T? FindDescendant<T>(DependencyObject parent)
+		where T : DependencyObject
+	{
+		var childCount = VisualTreeHelper.GetChildrenCount(parent);
+		for (var index = 0; index < childCount; index++)
+		{
+			var child = VisualTreeHelper.GetChild(parent, index);
+			if (child is T match)
+				return match;
+
+			var descendant = FindDescendant<T>(child);
+			if (descendant is not null)
+				return descendant;
+		}
+
+		return null;
+	}
+
+	private void UpdatePresetList()
+	{
+		_isUpdatingPresetList = true;
+		try
+		{
+			var selectedPreset = _settings.Presets.FirstOrDefault(x => x.Id == _settings.ActivePresetId);
+			PresetListBox.ItemsSource = null;
+			PresetListBox.ItemsSource = _settings.Presets.ToList();
+			PresetListBox.SelectedItem = selectedPreset;
+		}
+		finally
+		{
+			_isUpdatingPresetList = false;
+		}
+	}
+
+	private async Task<bool> RestoreActivePresetRowsAsync(bool deferSummary = false, bool batchRender = false)
+	{
+		CharacterScrollViewer.BeginAnimation(OpacityProperty, null);
+		IncompleteSummaryPanel.BeginAnimation(OpacityProperty, null);
+		CharacterScrollViewer.Opacity = 1;
+		IncompleteSummaryPanel.Opacity = 1;
+
+		if (_presetRowCollections.TryGetValue(CurrentPreset.Id, out var collection))
+		{
+			_allCharacterRows = collection
+				.Where(x => !x.IsDropIndicator)
+				.ToList();
+			ApplyCharacterImageModeToRows(_allCharacterRows);
+			ApplyWeeklyContentSettingsToRows(_allCharacterRows, deferSummary);
+			await RenderCharacterRowsAsync(batchRender);
+			return true;
+		}
+
+		await LoadCachedCharacterRowsAsync(deferSummary, batchRender);
+		return _allCharacterRows.Count > 0;
+	}
+
+	private void PersistCurrentPresetFromRows()
+	{
+		if (_allCharacterRows.Count == 0)
+			return;
+
+		CurrentPreset.Characters = _allCharacterRows
+			.Where(x => !x.IsDropIndicator && !string.IsNullOrWhiteSpace(x.CharacterName))
+			.Select(x => new SavedCharacter
+			{
+				ServerId = x.ServerId,
+				CharacterName = x.CharacterName
+			})
+			.ToList();
+		CurrentPreset.CachedCards = _allCharacterRows
+			.Where(x => !x.IsDropIndicator && !string.IsNullOrWhiteSpace(x.CharacterName))
+			.Select(x => x.ToCache())
+			.ToList();
+		_presetRowCollections[CurrentPreset.Id] = new ObservableCollection<CharacterRow>(_allCharacterRows);
+		_settings.Characters = CurrentPreset.Characters;
+		_settings.CachedCards = CurrentPreset.CachedCards;
 	}
 
 	private void UpdateToolbarOptionButtons()
@@ -789,7 +1074,7 @@ public partial class MainWindow : Window
 
 		IncompleteFilterButton.Content = _settings.FilterIncompleteOnly
 			? isCompact ? "전" : "전체보기"
-			: isCompact ? "미" : "미완료";
+			: isCompact ? "미" : "미완료만";
 		IncompleteFilterButton.Width = isCompact ? 30 : 76;
 		IncompleteFilterButton.Height = isCompact ? 26 : 34;
 		IncompleteFilterButton.FontSize = isCompact ? 12 : 13;
@@ -811,11 +1096,11 @@ public partial class MainWindow : Window
 		ClearAllButton.Margin = new Thickness(0, 0, isCompact ? 12 : 18, 0);
 	}
 
-	private void ApplyCompactMode()
+	private void ApplyCompactMode(bool animate = false)
 	{
 		var isCompact = _settings.IsCompactMode;
 
-		HudPanel.Visibility = isCompact ? Visibility.Collapsed : Visibility.Visible;
+		ApplyHudPanelCompactState(isCompact, animate);
 		TitleBar.Margin = isCompact ? new Thickness(0, 0, 0, 8) : new Thickness(0, 0, 0, 18);
 		TitleText.FontSize = isCompact ? 15 : 24;
 
@@ -853,6 +1138,81 @@ public partial class MainWindow : Window
 		UpdateCurrentCardWidths(force: true);
 	}
 
+	private void ApplyHudPanelCompactState(bool isCompact, bool animate)
+	{
+		HudPanel.BeginAnimation(HeightProperty, null);
+		HudPanel.BeginAnimation(OpacityProperty, null);
+
+		if (!animate)
+		{
+			HudPanel.Height = isCompact ? 0 : double.NaN;
+			HudPanel.Opacity = isCompact ? 0 : 1;
+			HudPanel.Visibility = isCompact ? Visibility.Collapsed : Visibility.Visible;
+			return;
+		}
+
+		var duration = TimeSpan.FromMilliseconds(170);
+		var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
+
+		if (!isCompact)
+		{
+			HudPanel.Visibility = Visibility.Visible;
+			HudPanel.Height = double.NaN;
+			HudPanel.Measure(new System.Windows.Size(
+				Math.Max(1, HudPanel.ActualWidth),
+				double.PositiveInfinity));
+			var targetHeight = Math.Max(1, HudPanel.DesiredSize.Height);
+			HudPanel.Height = 0;
+			HudPanel.Opacity = 0;
+
+			var expandAnimation = new DoubleAnimation(targetHeight, duration)
+			{
+				EasingFunction = easing,
+				FillBehavior = FillBehavior.Stop
+			};
+			expandAnimation.Completed += (_, _) =>
+			{
+				HudPanel.Height = double.NaN;
+				HudPanel.Opacity = 1;
+			};
+
+			HudPanel.BeginAnimation(HeightProperty, expandAnimation);
+			HudPanel.BeginAnimation(
+				OpacityProperty,
+				new DoubleAnimation(1, duration)
+				{
+					EasingFunction = easing,
+					FillBehavior = FillBehavior.Stop
+				});
+			return;
+		}
+
+		var startHeight = Math.Max(0, HudPanel.ActualHeight);
+		HudPanel.Height = startHeight;
+		HudPanel.Opacity = 1;
+
+		var collapseAnimation = new DoubleAnimation(0, duration)
+		{
+			EasingFunction = easing,
+			FillBehavior = FillBehavior.HoldEnd
+		};
+		collapseAnimation.Completed += (_, _) =>
+		{
+			HudPanel.Visibility = Visibility.Collapsed;
+			HudPanel.Height = 0;
+			HudPanel.Opacity = 0;
+		};
+
+		HudPanel.BeginAnimation(HeightProperty, collapseAnimation);
+		HudPanel.BeginAnimation(
+			OpacityProperty,
+			new DoubleAnimation(0, duration)
+			{
+				EasingFunction = easing,
+				FillBehavior = FillBehavior.HoldEnd
+			});
+	}
+
 	private async void ImportAdventure_Click(object sender, RoutedEventArgs e)
 	{
 		var adventureName = AdventureNameBox.Text.Trim();
@@ -874,7 +1234,7 @@ public partial class MainWindow : Window
 				return;
 			}
 
-			_settings.Characters = characters
+			CurrentPreset.Characters = characters
 				.Select(x => new SavedCharacter
 				{
 					ServerId = x.ServerId,
@@ -902,12 +1262,14 @@ public partial class MainWindow : Window
 	private async void Settings_Click(object sender, RoutedEventArgs e)
 	{
 		var originalThemeMode = _settings.ThemeMode;
+		var originalLowPerformanceMode = _settings.LowPerformanceMode;
 		var originalCharacterImageMode = _settings.CharacterImageMode;
 		var originalColumns = _settings.Columns;
 		var settingsWindow = new SettingsWindow(
 			_settings.ApiKey,
 			_settings.WeeklyContents,
 			_settings.ThemeMode,
+			_settings.LowPerformanceMode,
 			_settings.CharacterImageMode,
 			_settings.Columns,
 			_settings.AutoRefreshOnStartup,
@@ -915,6 +1277,7 @@ public partial class MainWindow : Window
 			_settings.EnableUserDataCache,
 			CurrentIsLightTheme,
 			PreviewThemeMode,
+			PreviewLowPerformanceMode,
 			PreviewCharacterImageMode,
 			PreviewColumns,
 			ResolveThemeIsLight)
@@ -925,6 +1288,7 @@ public partial class MainWindow : Window
 		if (settingsWindow.ShowDialog() != true)
 		{
 			PreviewThemeMode(originalThemeMode);
+			PreviewLowPerformanceMode(originalLowPerformanceMode);
 			PreviewCharacterImageMode(originalCharacterImageMode);
 			PreviewColumns(originalColumns);
 			return;
@@ -934,6 +1298,7 @@ public partial class MainWindow : Window
 		_settings.ApiKey = settingsWindow.ApiKey;
 		_settings.WeeklyContents = settingsWindow.WeeklyContents;
 		_settings.ThemeMode = settingsWindow.ThemeMode;
+		_settings.LowPerformanceMode = settingsWindow.LowPerformanceMode;
 		_settings.CharacterImageMode = CharacterRow.NormalizeImageMode(settingsWindow.CharacterImageMode);
 		_settings.Columns = settingsWindow.Columns;
 		_settings.AutoRefreshOnStartup = settingsWindow.AutoRefreshOnStartup;
@@ -953,7 +1318,7 @@ public partial class MainWindow : Window
 		{
 			ApplyWeeklyContentSettingsToCurrentRows();
 			SaveCurrentCardCache();
-			StatusText.Text = LogText.SettingsSaved;
+			StatusText.Text = LogText.SettingsSaved(DateTime.Now);
 		}
 	}
 
@@ -1060,7 +1425,7 @@ public partial class MainWindow : Window
 				return;
 			}
 
-			if (_settings.Characters.Count == 0)
+			if (CurrentPreset.Characters.Count == 0)
 			{
 				SetCharacterRows(Array.Empty<CharacterRow>());
 				ClearIncompleteContentSummary();
@@ -1068,12 +1433,12 @@ public partial class MainWindow : Window
 				return;
 			}
 
-			StatusText.Text = LogText.RefreshingCharacters(_settings.Characters.Count);
+			StatusText.Text = LogText.RefreshingCharacters(CurrentPreset.Characters.Count);
 
 			var rows = new List<CharacterRow>();
 			var cardWidth = CalculateCardWidth();
 
-			foreach (var saved in _settings.Characters)
+			foreach (var saved in CurrentPreset.Characters)
 			{
 				var serverId = string.IsNullOrWhiteSpace(saved.ServerId) ? _settings.ServerId : saved.ServerId;
 				var found = await _api.SearchCharactersByCharacterNameAsync(
@@ -1120,7 +1485,7 @@ public partial class MainWindow : Window
 
 			ApplyWeeklyContentSettingsToRows(rows);
 
-			SetCharacterRows(rows);
+			await SetCharacterRowsAsync(rows, batchRender: rows.Count >= 20);
 			SyncSettingsCharactersFromRows(_allCharacterRows);
 			SaveCardCache(_allCharacterRows);
 			StatusText.Text = LogText.LastRefresh(DateTime.Now);
@@ -1148,7 +1513,7 @@ public partial class MainWindow : Window
 		RenderCharacterRows();
 	}
 
-	private void ApplyWeeklyContentSettingsToRows(IReadOnlyList<CharacterRow> rows)
+	private void ApplyWeeklyContentSettingsToRows(IReadOnlyList<CharacterRow> rows, bool deferSummary = false)
 	{
 		var context = new WeeklyDisplayContext
 		{
@@ -1158,6 +1523,15 @@ public partial class MainWindow : Window
 
 		foreach (var row in rows)
 			row.ApplyWeeklyContentSettings(_settings.WeeklyContents, context);
+
+		if (deferSummary)
+		{
+			var snapshot = rows.ToList();
+			Dispatcher.BeginInvoke(
+				() => UpdateBottomSummaryPanel(snapshot, context),
+				DispatcherPriority.Background);
+			return;
+		}
 
 		UpdateBottomSummaryPanel(rows, context);
 	}
@@ -1200,18 +1574,107 @@ public partial class MainWindow : Window
 
 	private void SummaryPanelToggle_Click(object sender, RoutedEventArgs e)
 	{
-		_isSummaryPanelExpanded = !_isSummaryPanelExpanded;
-		UpdateSummaryPanelExpansion();
+		ToggleSummaryPanel();
 	}
 
-	private void UpdateSummaryPanelExpansion()
+	private void SummaryPanelHeader_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
 	{
-		SummaryPanelBody.Visibility = _isSummaryPanelExpanded
-			? Visibility.Visible
-			: Visibility.Collapsed;
+		e.Handled = true;
+		ToggleSummaryPanel();
+	}
+
+	private void ToggleSummaryPanel()
+	{
+		_isSummaryPanelExpanded = !_isSummaryPanelExpanded;
+		UpdateSummaryPanelExpansion(animate: true);
+	}
+
+	private void UpdateSummaryPanelExpansion(bool animate = false)
+	{
 		SummaryPanelToggleIcon.Data = Geometry.Parse(_isSummaryPanelExpanded
 			? "M 4 7 L 8 11 L 12 7"
 			: "M 4 10 L 8 6 L 12 10");
+
+		if (!animate)
+		{
+			SummaryPanelBody.BeginAnimation(HeightProperty, null);
+			SummaryPanelBody.BeginAnimation(OpacityProperty, null);
+			SummaryPanelBody.Height = _isSummaryPanelExpanded ? double.NaN : 0;
+			SummaryPanelBody.Opacity = _isSummaryPanelExpanded ? 1 : 0;
+			SummaryPanelBody.Visibility = _isSummaryPanelExpanded
+				? Visibility.Visible
+				: Visibility.Collapsed;
+			return;
+		}
+
+		AnimateSummaryPanelBody(_isSummaryPanelExpanded);
+	}
+
+	private void AnimateSummaryPanelBody(bool expand)
+	{
+		SummaryPanelBody.BeginAnimation(HeightProperty, null);
+		SummaryPanelBody.BeginAnimation(OpacityProperty, null);
+
+		var duration = TimeSpan.FromMilliseconds(160);
+		var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
+
+		if (expand)
+		{
+			SummaryPanelBody.Visibility = Visibility.Visible;
+			SummaryPanelBody.Height = double.NaN;
+			SummaryPanelBody.Measure(new System.Windows.Size(
+				Math.Max(1, SummaryPanelBody.ActualWidth),
+				double.PositiveInfinity));
+			var targetHeight = Math.Max(1, SummaryPanelBody.DesiredSize.Height);
+			SummaryPanelBody.Height = 0;
+			SummaryPanelBody.Opacity = 0;
+
+			var heightAnimation = new DoubleAnimation(targetHeight, duration)
+			{
+				EasingFunction = easing,
+				FillBehavior = FillBehavior.Stop
+			};
+			heightAnimation.Completed += (_, _) =>
+			{
+				SummaryPanelBody.Height = double.NaN;
+				SummaryPanelBody.Opacity = 1;
+			};
+
+			SummaryPanelBody.BeginAnimation(HeightProperty, heightAnimation);
+			SummaryPanelBody.BeginAnimation(
+				OpacityProperty,
+				new DoubleAnimation(1, duration)
+				{
+					EasingFunction = easing,
+					FillBehavior = FillBehavior.Stop
+				});
+			return;
+		}
+
+		var startHeight = Math.Max(0, SummaryPanelBody.ActualHeight);
+		SummaryPanelBody.Height = startHeight;
+		SummaryPanelBody.Opacity = 1;
+
+		var collapseAnimation = new DoubleAnimation(0, duration)
+		{
+			EasingFunction = easing,
+			FillBehavior = FillBehavior.HoldEnd
+		};
+		collapseAnimation.Completed += (_, _) =>
+		{
+			SummaryPanelBody.Visibility = Visibility.Collapsed;
+			SummaryPanelBody.Height = 0;
+			SummaryPanelBody.Opacity = 0;
+		};
+
+		SummaryPanelBody.BeginAnimation(HeightProperty, collapseAnimation);
+		SummaryPanelBody.BeginAnimation(
+			OpacityProperty,
+			new DoubleAnimation(0, duration)
+			{
+				EasingFunction = easing,
+				FillBehavior = FillBehavior.HoldEnd
+			});
 	}
 
 	private List<IncompleteContentGroup> BuildIncompleteContentGroups(
@@ -1418,21 +1881,28 @@ public partial class MainWindow : Window
 			apocalypseCleared);
 	}
 
-	private void LoadCachedCharacterRows()
+	private void LoadCachedCharacterRows(bool deferSummary = false)
+	{
+		LoadCachedCharacterRowsAsync(deferSummary, batchRender: false)
+			.GetAwaiter()
+			.GetResult();
+	}
+
+	private async Task LoadCachedCharacterRowsAsync(bool deferSummary = false, bool batchRender = false)
 	{
 		if (!_settings.EnableUserDataCache)
 			return;
 
-		if (_settings.CachedCards.Count == 0 || _settings.Characters.Count == 0)
+		if (CurrentPreset.CachedCards.Count == 0 || CurrentPreset.Characters.Count == 0)
 			return;
 
 		var cardWidth = CalculateCardWidth();
 		var rows = new List<CharacterRow>();
 
-		foreach (var saved in _settings.Characters)
+		foreach (var saved in CurrentPreset.Characters)
 		{
 			var serverId = string.IsNullOrWhiteSpace(saved.ServerId) ? _settings.ServerId : saved.ServerId;
-			var cache = _settings.CachedCards.FirstOrDefault(x =>
+			var cache = CurrentPreset.CachedCards.FirstOrDefault(x =>
 				string.Equals(x.ServerId, serverId, StringComparison.OrdinalIgnoreCase) &&
 				string.Equals(x.CharacterName, saved.CharacterName, StringComparison.OrdinalIgnoreCase));
 
@@ -1446,7 +1916,8 @@ public partial class MainWindow : Window
 			return;
 
 		ApplyCharacterImageModeToRows(rows);
-		SetCharacterRows(rows);
+		ApplyWeeklyContentSettingsToRows(rows, deferSummary);
+		await SetCharacterRowsAsync(rows, batchRender);
 		StatusText.Text = LogText.CachedCardsLoaded(rows.Count);
 	}
 
@@ -1476,7 +1947,8 @@ public partial class MainWindow : Window
 
 	private bool HasDisplayedCharacterRows()
 	{
-		return CharacterList.ItemsSource is IEnumerable<CharacterRow> rows &&
+		return _allCharacterRows.Any(x => !x.IsDropIndicator) ||
+			CharacterList.ItemsSource is IEnumerable<CharacterRow> rows &&
 			rows.Any(x => !x.IsDropIndicator);
 	}
 
@@ -1538,7 +2010,10 @@ public partial class MainWindow : Window
 
 	private void SaveCurrentCardCache()
 	{
-		if (CharacterList.ItemsSource is not IEnumerable<CharacterRow> rows)
+		var rows = _allCharacterRows.Count > 0
+			? _allCharacterRows
+			: CharacterList.ItemsSource as IEnumerable<CharacterRow>;
+		if (rows is null)
 			return;
 
 		SaveCardCache(rows);
@@ -1546,16 +2021,20 @@ public partial class MainWindow : Window
 
 	private void SaveCardCache(IEnumerable<CharacterRow> rows)
 	{
-		_settings.CachedCards = rows
+		CurrentPreset.CachedCards = rows
 			.Where(x => !x.IsDropIndicator && !string.IsNullOrWhiteSpace(x.CharacterName))
 			.Select(x => x.ToCache())
 			.ToList();
+		_presetRowCollections[CurrentPreset.Id] = new ObservableCollection<CharacterRow>(
+			rows.Where(x => !x.IsDropIndicator));
+		_settings.Characters = CurrentPreset.Characters;
+		_settings.CachedCards = CurrentPreset.CachedCards;
 		SaveSettings();
 	}
 
 	private void SyncSettingsCharactersFromRows(IEnumerable<CharacterRow> rows)
 	{
-		_settings.Characters = rows
+		CurrentPreset.Characters = rows
 			.Where(x => !x.IsDropIndicator && !string.IsNullOrWhiteSpace(x.CharacterName))
 			.Select(x => new SavedCharacter
 			{
@@ -1563,25 +2042,97 @@ public partial class MainWindow : Window
 				CharacterName = x.CharacterName
 			})
 			.ToList();
+		_settings.Characters = CurrentPreset.Characters;
 	}
 
 	private void SetCharacterRows(IEnumerable<CharacterRow> rows)
+	{
+		SetCharacterRowsAsync(rows, batchRender: false)
+			.GetAwaiter()
+			.GetResult();
+	}
+
+	private async Task SetCharacterRowsAsync(IEnumerable<CharacterRow> rows, bool batchRender = false)
 	{
 		_allCharacterRows = rows
 			.Where(x => !x.IsDropIndicator)
 			.ToList();
 		SortAllCharacterRowsIfNeeded();
-		RenderCharacterRows();
+		_presetRowCollections[CurrentPreset.Id] = new ObservableCollection<CharacterRow>(_allCharacterRows);
+		await RenderCharacterRowsAsync(batchRender);
 	}
 
 	private void RenderCharacterRows()
 	{
+		RenderCharacterRowsAsync(batch: false)
+			.GetAwaiter()
+			.GetResult();
+	}
+
+	private async Task RenderCharacterRowsAsync(bool batch = false)
+	{
+		var renderGeneration = ++_characterRenderGeneration;
 		var rows = _allCharacterRows.AsEnumerable();
 		if (_settings.FilterIncompleteOnly)
 			rows = rows.Where(HasActionableIncompleteContent);
 
-		CharacterList.ItemsSource = new System.Collections.ObjectModel.ObservableCollection<CharacterRow>(rows);
-		UpdateCurrentCardWidths(force: true);
+		CharacterList.Margin = new Thickness(0);
+		if (!ReferenceEquals(CharacterList.ItemsSource, _characterRows))
+			CharacterList.ItemsSource = _characterRows;
+
+		var visibleRows = rows.ToList();
+		UpdateCurrentCardWidths(force: true, rows: visibleRows);
+		await ReplaceDisplayedCharacterRowsAsync(visibleRows, batch, renderGeneration);
+	}
+
+	private async Task ReplaceDisplayedCharacterRowsAsync(IReadOnlyList<CharacterRow> rows, bool batch, int renderGeneration)
+	{
+		if (renderGeneration != _characterRenderGeneration)
+			return;
+
+		_characterRows.Clear();
+
+		if (!batch || rows.Count < 20)
+		{
+			foreach (var row in rows)
+			{
+				if (renderGeneration != _characterRenderGeneration)
+					return;
+
+				_characterRows.Add(row);
+			}
+			return;
+		}
+
+		for (var index = 0; index < rows.Count; index++)
+		{
+			if (renderGeneration != _characterRenderGeneration)
+				return;
+
+			_characterRows.Add(rows[index]);
+
+			if ((index + 1) % 10 == 0)
+			{
+				await Dispatcher.Yield(DispatcherPriority.Background);
+
+				if (renderGeneration != _characterRenderGeneration)
+					return;
+			}
+		}
+	}
+
+	private static bool HasSameCharacterSequence(IReadOnlyList<CharacterRow> left, IReadOnlyList<CharacterRow> right)
+	{
+		if (left.Count != right.Count)
+			return false;
+
+		for (var index = 0; index < left.Count; index++)
+		{
+			if (!IsSameCharacter(left[index], right[index]))
+				return false;
+		}
+
+		return true;
 	}
 
 	private void SortAllCharacterRowsIfNeeded()
@@ -1614,20 +2165,20 @@ public partial class MainWindow : Window
 			return;
 		}
 
-		_settings.Save();
+		var settingsSnapshot = CreateSettingsSnapshot();
+		EnqueueSettingsSave(settingsSnapshot);
+	}
+
+	private void MarkUserDataDirty()
+	{
 	}
 
 	private System.Collections.ObjectModel.ObservableCollection<CharacterRow>? GetCharacterCollection()
 	{
-		if (CharacterList.ItemsSource is System.Collections.ObjectModel.ObservableCollection<CharacterRow> collection)
-			return collection;
+		if (!ReferenceEquals(CharacterList.ItemsSource, _characterRows))
+			CharacterList.ItemsSource = _characterRows;
 
-		if (CharacterList.ItemsSource is not IEnumerable<CharacterRow> rows)
-			return null;
-
-		collection = new System.Collections.ObjectModel.ObservableCollection<CharacterRow>(rows);
-		CharacterList.ItemsSource = collection;
-		return collection;
+		return _characterRows;
 	}
 
 	private void ScheduleSettingsSave()
@@ -1651,7 +2202,40 @@ public partial class MainWindow : Window
 			return;
 
 		var settingsSnapshot = CreateSettingsSnapshot();
-		_ = Task.Run(settingsSnapshot.Save);
+		EnqueueSettingsSave(settingsSnapshot);
+	}
+
+	private void EnqueueSettingsSave(AppSettings settingsSnapshot)
+	{
+		lock (_settingsSaveQueueLock)
+		{
+			_settingsSaveQueue = _settingsSaveQueue
+				.ContinueWith(
+					previous =>
+					{
+						_ = previous.Exception;
+						settingsSnapshot.Save();
+					},
+					CancellationToken.None,
+					TaskContinuationOptions.None,
+					TaskScheduler.Default);
+		}
+	}
+
+	private void WaitForQueuedSettingsSave()
+	{
+		Task saveQueue;
+		lock (_settingsSaveQueueLock)
+			saveQueue = _settingsSaveQueue;
+
+		try
+		{
+			saveQueue.GetAwaiter().GetResult();
+		}
+		catch (Exception ex)
+		{
+			StatusText.Text = LogText.Error(ex.Message);
+		}
 	}
 
 	private void CancelPendingSettingsSave()
@@ -1671,6 +2255,7 @@ public partial class MainWindow : Window
 			IsCompactMode = _settings.IsCompactMode,
 			FilterIncompleteOnly = _settings.FilterIncompleteOnly,
 			AutoSortByFame = _settings.AutoSortByFame,
+			LowPerformanceMode = _settings.LowPerformanceMode,
 			AutoRefreshOnStartup = _settings.AutoRefreshOnStartup,
 			AutoRefreshIntervalMinutes = _settings.AutoRefreshIntervalMinutes,
 			EnableUserDataCache = _settings.EnableUserDataCache,
@@ -1679,28 +2264,28 @@ public partial class MainWindow : Window
 			WindowTop = _settings.WindowTop,
 			WindowWidth = _settings.WindowWidth,
 			WindowHeight = _settings.WindowHeight,
-			Characters = _settings.Characters
+			ActivePresetId = _settings.ActivePresetId,
+			Characters = CurrentPreset.Characters
 				.Select(x => new SavedCharacter
 				{
 					ServerId = x.ServerId,
 					CharacterName = x.CharacterName
 				})
 				.ToList(),
-			CachedCards = _settings.CachedCards
-				.Select(x => new CachedCharacterCard
+			CachedCards = CloneCachedCards(CurrentPreset.CachedCards),
+			Presets = _settings.Presets
+				.Select(x => new CardEntryPreset
 				{
-					ServerId = x.ServerId,
-					ServerName = x.ServerName,
-					CharacterName = x.CharacterName,
-					JobName = x.JobName,
-					Fame = x.Fame,
-					JobSummary = x.JobSummary,
-					FameSummary = x.FameSummary,
-					MetaSummary = x.MetaSummary,
-					Summary = x.Summary,
-					ImagePath = x.ImagePath,
-					CompactImageOffsetX = x.CompactImageOffsetX,
-					CompactImageOffsetY = x.CompactImageOffsetY
+					Id = x.Id,
+					Name = x.Name,
+					Characters = x.Characters
+						.Select(character => new SavedCharacter
+						{
+							ServerId = character.ServerId,
+							CharacterName = character.CharacterName
+						})
+						.ToList(),
+					CachedCards = CloneCachedCards(x.CachedCards)
 				})
 				.ToList(),
 			WeeklyContents = new WeeklyContentSettings
@@ -1718,6 +2303,70 @@ public partial class MainWindow : Window
 				ShowDiregieRaid = _settings.WeeklyContents.ShowDiregieRaid,
 				ShowHardMistRaid = _settings.WeeklyContents.ShowHardMistRaid
 			}
+		};
+	}
+
+	private static List<CachedCharacterCard> CloneCachedCards(IEnumerable<CachedCharacterCard> cards)
+	{
+		return cards
+			.Select(x => new CachedCharacterCard
+			{
+				ServerId = x.ServerId,
+				ServerName = x.ServerName,
+				CharacterName = x.CharacterName,
+				JobName = x.JobName,
+				Fame = x.Fame,
+				JobSummary = x.JobSummary,
+				FameSummary = x.FameSummary,
+				MetaSummary = x.MetaSummary,
+				BaseSummary = x.BaseSummary,
+				Summary = x.Summary,
+				WeeklyStatus = CloneWeeklyStatus(x.WeeklyStatus),
+				SummaryLines = x.SummaryLines
+					.Select(CloneCachedSummaryLine)
+					.ToList(),
+				ImagePath = x.ImagePath,
+				CompactImageOffsetX = x.CompactImageOffsetX,
+				CompactImageOffsetY = x.CompactImageOffsetY
+			})
+			.ToList();
+	}
+
+	private static CachedSummaryLine CloneCachedSummaryLine(CachedSummaryLine line)
+	{
+		return new CachedSummaryLine
+		{
+			Text = line.Text,
+			Marker = line.Marker,
+			Body = line.Body,
+			DetailedBody = line.DetailedBody,
+			IsWeeklyLoot = line.IsWeeklyLoot,
+			LootTitle = line.LootTitle,
+			PrimevalCount = line.PrimevalCount,
+			EpicCount = line.EpicCount,
+			IsCleared = line.IsCleared,
+			IsLimitedOut = line.IsLimitedOut,
+			IsFameLocked = line.IsFameLocked,
+			IsSeparator = line.IsSeparator
+		};
+	}
+
+	private static CharacterWeeklyStatus? CloneWeeklyStatus(CharacterWeeklyStatus? status)
+	{
+		if (status is null)
+			return null;
+
+		return new CharacterWeeklyStatus
+		{
+			IsAvailable = status.IsAvailable,
+			Contents = status.Contents
+				.Select(x => new WeeklyContentResult
+				{
+					Id = x.Id,
+					Name = x.Name,
+					IsCleared = x.IsCleared
+				})
+				.ToList()
 		};
 	}
 
@@ -1802,7 +2451,7 @@ public partial class MainWindow : Window
 		_settings.WindowWidth = Width;
 		_settings.WindowHeight = Height;
 		if (_settings.EnableUserDataCache)
-			_settings.Save();
+			ScheduleSettingsSave();
 	}
 
 	private static bool IsUsableWindowPlacement(double left, double top, double width, double height)
@@ -2131,10 +2780,13 @@ public partial class MainWindow : Window
 			VerticalScrollBarReserveWidth);
 	}
 
-    private void UpdateCurrentCardWidths(bool force = false, double? contentWidth = null)
+    private void UpdateCurrentCardWidths(bool force = false, double? contentWidth = null, IEnumerable<CharacterRow>? rows = null)
     {
-        if (CharacterList.ItemsSource is not IEnumerable<CharacterRow> rows)
-            return;
+        rows ??= _allCharacterRows.Count > 0
+			? _allCharacterRows
+			: CharacterList.ItemsSource as IEnumerable<CharacterRow>;
+		if (rows is null)
+			return;
 
         var cardWidth = CalculateCardWidth(contentWidth);
 
@@ -2151,11 +2803,7 @@ public partial class MainWindow : Window
 
 	private void ReorderCharacterRows(CharacterRow source, int targetIndex)
 	{
-		var collection = GetCharacterCollection();
-		if (collection is null)
-			return;
-
-		IEnumerable<CharacterRow> baseRows = _dragBaseRows ?? collection.AsEnumerable();
+		IEnumerable<CharacterRow> baseRows = _dragBaseRows ?? GetOrderedCharacterRows();
 		var orderedRows = baseRows
 			.Where(x => !x.IsDropIndicator)
 			.ToList();
@@ -2171,36 +2819,42 @@ public partial class MainWindow : Window
 		targetIndex = Math.Clamp(targetIndex, 0, orderedRows.Count);
 		if (sourceIndex == targetIndex)
 			return;
-
 		orderedRows.Insert(targetIndex, movingRow);
+		var collection = GetCharacterCollection();
+		if (collection is null)
+			return;
+
 		var currentIndex = collection.ToList().FindIndex(x => IsSameCharacter(x, source));
 		if (currentIndex < 0)
 			return;
 
-		collection.Move(currentIndex, targetIndex);
 		_allCharacterRows = orderedRows;
 		_isDragCompleted = true;
+		collection.Move(currentIndex, targetIndex);
 		UpdateCurrentCardWidths();
 		AnimateCharacterReorderHint(movingRow);
 
-		_settings.Characters = orderedRows
+		CurrentPreset.Characters = orderedRows
 			.Select(x => new SavedCharacter
 			{
 				ServerId = x.ServerId,
 				CharacterName = x.CharacterName
 			})
 			.ToList();
-		_settings.CachedCards = orderedRows
+		CurrentPreset.CachedCards = orderedRows
 			.Select(x => x.ToCache())
 			.ToList();
-		ScheduleSettingsSave();
-		StatusText.Text = LogText.CardOrderSaved;
+		_presetRowCollections[CurrentPreset.Id] = collection;
+		_settings.Characters = CurrentPreset.Characters;
+		_settings.CachedCards = CurrentPreset.CachedCards;
+		MarkUserDataDirty();
+		StatusText.Text = "카드 순서를 변경했습니다.";
 	}
 
 	private async void AnimateCharacterReorderHint(CharacterRow row)
 	{
 		await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Loaded);
-		if (CharacterList.ItemContainerGenerator.ContainerFromItem(row) is not FrameworkElement container)
+		if (FindCharacterCardContainer(row) is not FrameworkElement container)
 			return;
 
 		var transform = new ScaleTransform(0.985, 0.985);
@@ -2256,27 +2910,41 @@ public partial class MainWindow : Window
 
 		await AnimateCharacterRemovalAsync(row);
 
-		_settings.Characters = orderedRows
+		CurrentPreset.Characters = orderedRows
 			.Select(x => new SavedCharacter
 			{
 				ServerId = x.ServerId,
 				CharacterName = x.CharacterName
 			})
 			.ToList();
-		_settings.CachedCards = orderedRows
+		CurrentPreset.CachedCards = orderedRows
 			.Select(x => x.ToCache())
 			.ToList();
-		SaveSettings();
+		_settings.Characters = CurrentPreset.Characters;
+		_settings.CachedCards = CurrentPreset.CachedCards;
+		MarkUserDataDirty();
 
 		ApplyWeeklyContentSettingsToRows(orderedRows);
-		SetCharacterRows(orderedRows);
+		_allCharacterRows = orderedRows;
+		if (GetCharacterCollection() is { } collection)
+		{
+			var index = collection.ToList().FindIndex(x => IsSameCharacter(x, row));
+			if (index >= 0)
+				collection.RemoveAt(index);
+		}
+		else
+		{
+			RenderCharacterRows();
+		}
+
+		_presetRowCollections[CurrentPreset.Id] = new ObservableCollection<CharacterRow>(_allCharacterRows);
 		UpdateCurrentCardWidths();
 		StatusText.Text = LogText.CharacterRemoved(row.CharacterName);
 	}
 
 	private Task AnimateCharacterRemovalAsync(CharacterRow row)
 	{
-		if (CharacterList.ItemContainerGenerator.ContainerFromItem(row) is not FrameworkElement container)
+		if (FindCharacterCardContainer(row) is not FrameworkElement container)
 			return Task.CompletedTask;
 
 		var transform = new ScaleTransform(1, 1);
@@ -2307,7 +2975,7 @@ public partial class MainWindow : Window
 	private Task AnimateCharacterAddedAsync(CharacterRow row)
 	{
 		CharacterList.UpdateLayout();
-		if (CharacterList.ItemContainerGenerator.ContainerFromItem(row) is not FrameworkElement container)
+		if (FindCharacterCardContainer(row) is not FrameworkElement container)
 			return Task.CompletedTask;
 
 		var transform = new ScaleTransform(0.96, 0.96);
@@ -2356,7 +3024,10 @@ public partial class MainWindow : Window
 
 	private List<CharacterRow> GetDisplayedCharacterRows()
 	{
-		if (CharacterList.ItemsSource is not IEnumerable<CharacterRow> rows)
+		var rows = _allCharacterRows.Count > 0
+			? _allCharacterRows
+			: CharacterList.ItemsSource as IEnumerable<CharacterRow>;
+		if (rows is null)
 			return new List<CharacterRow>();
 
 		return rows
@@ -2459,13 +3130,18 @@ public partial class MainWindow : Window
 				Math.Max(48, row.OverlayBottom - row.OverlayTop)));
 	}
 
+	private FrameworkElement? FindCharacterCardContainer(CharacterRow row)
+	{
+		return CharacterList.ItemContainerGenerator.ContainerFromItem(row) as FrameworkElement;
+	}
+
 	private List<VisualRow> GetVisualRows(IReadOnlyList<CharacterRow> rows)
 	{
 		var layouts = new List<ItemLayout>();
 
 		for (var index = 0; index < rows.Count; index++)
 		{
-			if (CharacterList.ItemContainerGenerator.ContainerFromItem(rows[index]) is not FrameworkElement container ||
+			if (FindCharacterCardContainer(rows[index]) is not FrameworkElement container ||
 				container.ActualWidth <= 0 ||
 				container.ActualHeight <= 0)
 			{
@@ -2650,7 +3326,7 @@ public partial class MainWindow : Window
 	private double GetDraggingCardHeight()
 	{
 		if (_draggingRow is not null &&
-			CharacterList.ItemContainerGenerator.ContainerFromItem(_draggingRow) is FrameworkElement container &&
+			FindCharacterCardContainer(_draggingRow) is FrameworkElement container &&
 			container.ActualHeight > 0)
 		{
 			return container.ActualHeight;

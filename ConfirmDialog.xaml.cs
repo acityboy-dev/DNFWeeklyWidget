@@ -7,10 +7,12 @@ public partial class ConfirmDialog : Window
 {
 	private readonly ManualWindowDrag _windowDrag;
 	private readonly bool _isLightTheme;
+	private readonly bool _lowPerformanceMode;
 
-	public ConfirmDialog(string title, string message, string confirmText, bool isLightTheme)
+	public ConfirmDialog(string title, string message, string confirmText, bool isLightTheme, bool lowPerformanceMode = false)
 	{
 		_isLightTheme = isLightTheme;
+		_lowPerformanceMode = lowPerformanceMode;
 		InitializeComponent();
 		_windowDrag = new ManualWindowDrag(this);
 		TitleText.Text = title;
@@ -21,7 +23,7 @@ public partial class ConfirmDialog : Window
 	protected override void OnSourceInitialized(EventArgs e)
 	{
 		base.OnSourceInitialized(e);
-		WindowBackdrop.Apply(this, _isLightTheme);
+		WindowBackdrop.Apply(this, _isLightTheme, _lowPerformanceMode);
 	}
 
 	private void Confirm_Click(object sender, RoutedEventArgs e)

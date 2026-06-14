@@ -13,6 +13,7 @@
 		ShowInTaskbar="False"
 		SizeChanged="Window_SizeChanged"
 		LocationChanged="Window_LocationChanged"
+		PreviewKeyDown="Window_PreviewKeyDown"
 		MouseLeftButtonDown="Window_MouseLeftButtonDown">
 
 	<shell:WindowChrome.WindowChrome>
@@ -24,6 +25,7 @@
 
 	<Window.Resources>
 		<BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+		<local:CachedImageSourceConverter x:Key="CachedImageSourceConverter"/>
 		<SolidColorBrush x:Key="PrimaryTextBrush" Color="White"/>
 		<SolidColorBrush x:Key="SecondaryTextBrush" Color="#99FFFFFF"/>
 		<SolidColorBrush x:Key="TertiaryTextBrush" Color="#AAFFFFFF"/>
@@ -43,25 +45,7 @@
 		<SolidColorBrush x:Key="InputFocusedBorderBrush" Color="#88FFFFFF"/>
 		<SolidColorBrush x:Key="InputSelectionBrush" Color="#6688C7FF"/>
 		<SolidColorBrush x:Key="EpicLootTextBrush" Color="#FFFFB400"/>
-		<LinearGradientBrush x:Key="PrimevalLootTextBrush"
-							 StartPoint="0,0"
-							 EndPoint="0,1">
-			<GradientStop Color="#FF5AFF62" Offset="0"/>
-			<GradientStop Color="#FF59E99D" Offset="0.34"/>
-			<GradientStop Color="#FF58C8FA" Offset="0.68"/>
-			<GradientStop Color="#FF3A67BF" Offset="1"/>
-		</LinearGradientBrush>
-		<DropShadowEffect x:Key="PrimevalLootTextGlowEffect"
-						  Color="#FF58C8FA"
-						  BlurRadius="3"
-						  ShadowDepth="0"
-						  Opacity="0.24"/>
-		<DropShadowEffect x:Key="EpicLootTextGlowEffect"
-						  Color="#FFFFB400"
-						  BlurRadius="3"
-						  ShadowDepth="0"
-						  Opacity="0.24"/>
-
+		<SolidColorBrush x:Key="PrimevalLootTextBrush" Color="#FF58C8FA"/>
 		<Style x:Key="InvisibleScrollBarButtonStyle" TargetType="RepeatButton">
 			<Setter Property="Focusable" Value="False"/>
 			<Setter Property="IsTabStop" Value="False"/>
@@ -75,24 +59,32 @@
 		</Style>
 
 		<Style x:Key="PillScrollThumbStyle" TargetType="Thumb">
-			<Setter Property="MinHeight" Value="42"/>
+			<Setter Property="MinHeight" Value="24"/>
 			<Setter Property="Template">
 				<Setter.Value>
 					<ControlTemplate TargetType="Thumb">
-						<Border x:Name="ThumbPill"
-								Width="6"
-								Margin="2 4"
-								HorizontalAlignment="Center"
-								Background="{DynamicResource ScrollThumbBrush}"
-								CornerRadius="4"/>
+						<Rectangle x:Name="ThumbPill"
+								   Width="8"
+								   Margin="0"
+								   HorizontalAlignment="Center"
+								   VerticalAlignment="Stretch"
+								   Fill="{DynamicResource ScrollThumbBrush}"
+								   RadiusX="4"
+								   RadiusY="4"
+								   UseLayoutRounding="False"
+								   SnapsToDevicePixels="False"/>
 						<ControlTemplate.Triggers>
 							<Trigger Property="IsMouseOver" Value="True">
-								<Setter TargetName="ThumbPill" Property="Width" Value="8"/>
-								<Setter TargetName="ThumbPill" Property="Background" Value="{DynamicResource ScrollThumbHoverBrush}"/>
+								<Setter TargetName="ThumbPill" Property="Width" Value="10"/>
+								<Setter TargetName="ThumbPill" Property="RadiusX" Value="5"/>
+								<Setter TargetName="ThumbPill" Property="RadiusY" Value="5"/>
+								<Setter TargetName="ThumbPill" Property="Fill" Value="{DynamicResource ScrollThumbHoverBrush}"/>
 							</Trigger>
 							<Trigger Property="IsDragging" Value="True">
-								<Setter TargetName="ThumbPill" Property="Width" Value="8"/>
-								<Setter TargetName="ThumbPill" Property="Background" Value="{DynamicResource ScrollThumbPressedBrush}"/>
+								<Setter TargetName="ThumbPill" Property="Width" Value="10"/>
+								<Setter TargetName="ThumbPill" Property="RadiusX" Value="5"/>
+								<Setter TargetName="ThumbPill" Property="RadiusY" Value="5"/>
+								<Setter TargetName="ThumbPill" Property="Fill" Value="{DynamicResource ScrollThumbPressedBrush}"/>
 							</Trigger>
 						</ControlTemplate.Triggers>
 					</ControlTemplate>
@@ -107,9 +99,12 @@
 			<Setter Property="Template">
 				<Setter.Value>
 					<ControlTemplate TargetType="ScrollBar">
-						<Grid Background="Transparent">
+						<Grid Background="Transparent"
+							  ClipToBounds="False">
 							<Track x:Name="PART_Track"
-								   IsDirectionReversed="True">
+								   IsDirectionReversed="True"
+								   Margin="0 5"
+								   ClipToBounds="False">
 								<Track.DecreaseRepeatButton>
 									<RepeatButton Command="ScrollBar.PageUpCommand"
 												  Style="{StaticResource InvisibleScrollBarButtonStyle}"/>
@@ -165,6 +160,53 @@
 							</Trigger>
 							<Trigger Property="IsEnabled" Value="False">
 								<Setter Property="Opacity" Value="0.45"/>
+							</Trigger>
+						</ControlTemplate.Triggers>
+					</ControlTemplate>
+				</Setter.Value>
+			</Setter>
+		</Style>
+
+		<Style x:Key="PresetEdgeButtonStyle" TargetType="Button">
+			<Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+			<Setter Property="Background" Value="Transparent"/>
+			<Setter Property="BorderBrush" Value="Transparent"/>
+			<Setter Property="BorderThickness" Value="0"/>
+			<Setter Property="Padding" Value="0"/>
+			<Setter Property="Cursor" Value="Hand"/>
+			<Setter Property="Template">
+				<Setter.Value>
+					<ControlTemplate TargetType="Button">
+						<Grid x:Name="EdgeHitArea"
+							  Background="Transparent"
+							  ClipToBounds="False">
+							<Border x:Name="EdgeWash"
+									Width="14"
+									HorizontalAlignment="Left"
+									Background="{DynamicResource ButtonHoverBackgroundBrush}"
+									Opacity="0"/>
+							<Border x:Name="EdgeLine"
+									Width="1"
+									HorizontalAlignment="Left"
+									Background="{DynamicResource InputBorderBrush}"
+									Opacity="0.28"/>
+							<Border x:Name="ArrowSpot"
+									Width="16"
+									Height="42"
+									HorizontalAlignment="Left"
+									VerticalAlignment="Center"
+									Background="Transparent">
+								<ContentPresenter HorizontalAlignment="Center"
+												  VerticalAlignment="Center"/>
+							</Border>
+						</Grid>
+						<ControlTemplate.Triggers>
+							<Trigger Property="IsMouseOver" Value="True">
+								<Setter TargetName="EdgeWash" Property="Opacity" Value="0.75"/>
+								<Setter TargetName="EdgeLine" Property="Opacity" Value="0.72"/>
+							</Trigger>
+							<Trigger Property="IsPressed" Value="True">
+								<Setter TargetName="EdgeWash" Property="Opacity" Value="1"/>
 							</Trigger>
 						</ControlTemplate.Triggers>
 					</ControlTemplate>
@@ -292,14 +334,149 @@
 				<RowDefinition Height="Auto"/>
 			</Grid.RowDefinitions>
 
+			<Button x:Name="PresetPanelButton"
+					Style="{StaticResource PresetEdgeButtonStyle}"
+					Grid.RowSpan="5"
+					Width="18"
+					Padding="0"
+					HorizontalAlignment="Left"
+					VerticalAlignment="Stretch"
+					Margin="-22 -22 0 -22"
+					Panel.ZIndex="20"
+					ToolTip="카드 엔트리 프리셋"
+					PreviewMouseLeftButtonDown="PresetPanelButton_PreviewMouseLeftButtonDown"
+					Click="PresetPanelButton_Click">
+				<Path x:Name="PresetPanelArrow"
+					  Data="M 11 4 L 7 8 L 11 12"
+					  Stroke="{DynamicResource PrimaryTextBrush}"
+					  StrokeThickness="1.2"
+					  StrokeStartLineCap="Round"
+					  StrokeEndLineCap="Round"
+					  StrokeLineJoin="Round"
+					  Stretch="Uniform"
+					  Width="8"
+					  Height="14"/>
+			</Button>
+
+			<Popup x:Name="PresetPanelPopup"
+				   PlacementTarget="{Binding ElementName=RootPanel}"
+				   Placement="Left"
+				   HorizontalOffset="-12"
+				   AllowsTransparency="True"
+				   StaysOpen="False"
+				   Opened="PresetPanelPopup_Opened"
+				   Closed="PresetPanelPopup_Closed">
+				<Border x:Name="PresetPanelHost"
+						Width="210"
+						Background="{DynamicResource InputDropDownBackgroundBrush}"
+						BorderBrush="{DynamicResource InputBorderBrush}"
+						BorderThickness="1"
+						CornerRadius="10"
+						Padding="10"
+						RenderTransformOrigin="0,0.5">
+					<Border.RenderTransform>
+						<TranslateTransform X="14"/>
+					</Border.RenderTransform>
+					<StackPanel>
+						<Grid Margin="0 0 0 8">
+							<Grid.ColumnDefinitions>
+								<ColumnDefinition Width="*"/>
+								<ColumnDefinition Width="28"/>
+								<ColumnDefinition Width="6"/>
+								<ColumnDefinition Width="28"/>
+							</Grid.ColumnDefinitions>
+							<TextBlock Text="카드엔트리 프리셋"
+									   Foreground="{DynamicResource PrimaryTextBrush}"
+									   FontSize="13"
+									   FontWeight="SemiBold"
+									   VerticalAlignment="Center"/>
+							<Button Grid.Column="1"
+									Content="+"
+									Width="28"
+									Height="26"
+									Padding="0"
+									Click="AddPreset_Click"/>
+							<Button Grid.Column="3"
+									Content="-"
+									Width="28"
+									Height="26"
+									Padding="0"
+									Click="RemovePreset_Click"/>
+						</Grid>
+						<ListBox x:Name="PresetListBox"
+								 MaxHeight="220"
+								 BorderThickness="0"
+								 Background="Transparent"
+								 SelectionChanged="PresetListBox_SelectionChanged">
+							<ListBox.ItemContainerStyle>
+								<Style TargetType="ListBoxItem">
+									<Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+								</Style>
+							</ListBox.ItemContainerStyle>
+							<ListBox.ItemTemplate>
+								<DataTemplate>
+									<Grid Margin="0 1">
+										<Grid.ColumnDefinitions>
+											<ColumnDefinition Width="*"/>
+											<ColumnDefinition Width="22"/>
+										</Grid.ColumnDefinitions>
+										<TextBlock x:Name="PresetNameText"
+												   Text="{Binding Name}"
+												   Foreground="{DynamicResource PrimaryTextBrush}"
+												   FontSize="13"
+												   Padding="4 5"
+												   VerticalAlignment="Center"
+												   TextTrimming="CharacterEllipsis"/>
+										<TextBox x:Name="PresetNameBox"
+												 Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+												 Height="26"
+												 FontSize="13"
+												 Padding="4 2"
+												 VerticalAlignment="Center"
+												 Visibility="Collapsed"
+												 LostFocus="PresetNameBox_LostFocus"
+												 KeyDown="PresetNameBox_KeyDown"/>
+										<Button Grid.Column="1"
+												Tag="{Binding}"
+												Width="20"
+												Height="24"
+												Padding="0"
+												HorizontalAlignment="Right"
+												ToolTip="프리셋명 수정"
+												Click="EditPreset_Click">
+											<Path Data="M 3 11 L 3.5 8.5 L 9 3 L 11 5 L 5.5 10.5 Z M 8.4 3.6 L 10.4 5.6"
+												  Stroke="{DynamicResource SecondaryTextBrush}"
+												  StrokeThickness="1"
+												  StrokeStartLineCap="Round"
+												  StrokeEndLineCap="Round"
+												  StrokeLineJoin="Round"
+												  Stretch="Uniform"
+												  Width="11"
+												  Height="11"/>
+										</Button>
+									</Grid>
+									<DataTemplate.Triggers>
+										<DataTrigger Binding="{Binding IsEditing}" Value="True">
+											<Setter TargetName="PresetNameText" Property="Visibility" Value="Collapsed"/>
+											<Setter TargetName="PresetNameBox" Property="Visibility" Value="Visible"/>
+										</DataTrigger>
+									</DataTemplate.Triggers>
+								</DataTemplate>
+							</ListBox.ItemTemplate>
+						</ListBox>
+					</StackPanel>
+				</Border>
+			</Popup>
+
 			<DockPanel x:Name="TitleBar"
 					   Grid.Row="0"
 					   Margin="0 0 0 18">
 				<TextBlock x:Name="TitleText"
 						   Text="DNF Weekly Widget"
+						   FontFamily="Segoe UI Variable Display, Segoe UI"
 						   Foreground="{DynamicResource PrimaryTextBrush}"
 						   FontSize="24"
-						   FontWeight="Bold"
+						   FontWeight="Regular"
 						   VerticalAlignment="Center"
 						   DockPanel.Dock="Left"/>
 
@@ -484,7 +661,8 @@
 
 			<Grid x:Name="HudPanel"
 				  Grid.Row="1"
-				  Margin="0 0 0 18">
+				  Margin="0 0 0 18"
+				  ClipToBounds="True">
 				<Grid.RowDefinitions>
 					<RowDefinition Height="34"/>
 					<RowDefinition Height="10"/>
@@ -506,7 +684,8 @@
 							 Grid.Column="2"
 							 Height="34"
 							 FontSize="15"
-							 PreviewKeyDown="HudTextBox_PreviewKeyDown"/>
+							 PreviewKeyDown="HudTextBox_PreviewKeyDown"
+							 KeyDown="AdventureNameBox_KeyDown"/>
 					<Button Grid.Column="4"
 							Content="던담에서 리스트 불러오기"
 							MinWidth="186"
@@ -606,7 +785,7 @@
 													Margin="0 -4 0 10"
 													Visibility="{Binding ShowFullImage, Converter={StaticResource BoolToVisibilityConverter}}">
 												<Grid>
-													<Image Source="{Binding ImageUrl}"
+													<Image Source="{Binding ImageSource}"
 														   Stretch="None"
 														   HorizontalAlignment="Center"
 														   VerticalAlignment="Top"
@@ -645,7 +824,7 @@
 																		 RadiusX="17"
 																		 RadiusY="17"/>
 													</Grid.Clip>
-													<Image Source="{Binding ImageUrl}"
+													<Image Source="{Binding ImageSource}"
 														   Stretch="None"
 														   HorizontalAlignment="Left"
 														   VerticalAlignment="Top"
@@ -737,16 +916,14 @@
 																		<TextBlock Text="{Binding PrimevalCount}"
 																				   FontSize="13"
 																				   FontWeight="SemiBold"
-																				   Foreground="{DynamicResource PrimevalLootTextBrush}"
-																				   Effect="{StaticResource PrimevalLootTextGlowEffect}"/>
+																				   Foreground="{DynamicResource PrimevalLootTextBrush}"/>
 																	</InlineUIContainer>
 																	<Run Text="/"/>
 																	<InlineUIContainer BaselineAlignment="Center">
 																		<TextBlock Text="{Binding EpicCount}"
 																				   FontSize="13"
 																				   FontWeight="SemiBold"
-																				   Foreground="{DynamicResource EpicLootTextBrush}"
-																				   Effect="{StaticResource EpicLootTextGlowEffect}"/>
+																				   Foreground="{DynamicResource EpicLootTextBrush}"/>
 																	</InlineUIContainer>
 																</TextBlock>
 															</Grid>
@@ -806,16 +983,14 @@
 																	<TextBlock Text="{Binding PrimevalCount}"
 																			   FontSize="13"
 																			   FontWeight="SemiBold"
-																			   Foreground="{DynamicResource PrimevalLootTextBrush}"
-																			   Effect="{StaticResource PrimevalLootTextGlowEffect}"/>
+																			   Foreground="{DynamicResource PrimevalLootTextBrush}"/>
 																</InlineUIContainer>
 																<Run Text="/"/>
 																<InlineUIContainer BaselineAlignment="Center">
 																	<TextBlock Text="{Binding EpicCount}"
 																			   FontSize="13"
 																			   FontWeight="SemiBold"
-																			   Foreground="{DynamicResource EpicLootTextBrush}"
-																			   Effect="{StaticResource EpicLootTextGlowEffect}"/>
+																			   Foreground="{DynamicResource EpicLootTextBrush}"/>
 																</InlineUIContainer>
 															</TextBlock>
 															<TextBlock x:Name="SummaryDetailedWeeklyLootText"
@@ -828,16 +1003,14 @@
 																	<TextBlock Text="{Binding PrimevalCount}"
 																			   FontSize="13"
 																			   FontWeight="SemiBold"
-																			   Foreground="{DynamicResource PrimevalLootTextBrush}"
-																			   Effect="{StaticResource PrimevalLootTextGlowEffect}"/>
+																			   Foreground="{DynamicResource PrimevalLootTextBrush}"/>
 																</InlineUIContainer>
 																<Run Text="/에픽 "/>
 																<InlineUIContainer BaselineAlignment="Center">
 																	<TextBlock Text="{Binding EpicCount}"
 																			   FontSize="13"
 																			   FontWeight="SemiBold"
-																			   Foreground="{DynamicResource EpicLootTextBrush}"
-																			   Effect="{StaticResource EpicLootTextGlowEffect}"/>
+																			   Foreground="{DynamicResource EpicLootTextBrush}"/>
 																</InlineUIContainer>
 															</TextBlock>
 														</Grid>
@@ -890,7 +1063,10 @@
 					Margin="0 8 0 0"
 					Visibility="Collapsed">
 				<StackPanel>
-					<Grid Margin="0 0 0 6">
+					<Grid Margin="0 0 0 6"
+						  Background="Transparent"
+						  Cursor="Hand"
+						  MouseLeftButtonDown="SummaryPanelHeader_MouseLeftButtonDown">
 						<Grid.ColumnDefinitions>
 							<ColumnDefinition Width="*"/>
 							<ColumnDefinition Width="24"/>
@@ -900,24 +1076,22 @@
 								   FontSize="12"
 								   FontWeight="SemiBold"
 								   VerticalAlignment="Center"/>
-						<Button x:Name="SummaryPanelToggleButton"
-								Grid.Column="1"
-								Width="22"
-								Height="22"
-								Padding="0"
-								Click="SummaryPanelToggle_Click">
-							<Path x:Name="SummaryPanelToggleIcon"
-								  Data="M 4 7 L 8 11 L 12 7"
-								  Stroke="{DynamicResource SecondaryTextBrush}"
-								  StrokeThickness="1.4"
-								  StrokeStartLineCap="Round"
-								  StrokeEndLineCap="Round"
-								  Stretch="Uniform"
-								  Width="12"
-								  Height="12"/>
-						</Button>
+						<Path x:Name="SummaryPanelToggleIcon"
+							  Grid.Column="1"
+							  Data="M 4 7 L 8 11 L 12 7"
+							  Stroke="{DynamicResource SecondaryTextBrush}"
+							  StrokeThickness="1.4"
+							  StrokeStartLineCap="Round"
+							  StrokeEndLineCap="Round"
+							  Stretch="Uniform"
+							  Width="12"
+							  Height="12"
+							  HorizontalAlignment="Center"
+							  VerticalAlignment="Center"
+							  IsHitTestVisible="False"/>
 					</Grid>
-					<Grid x:Name="SummaryPanelBody">
+					<Grid x:Name="SummaryPanelBody"
+						  ClipToBounds="True">
 						<Grid.ColumnDefinitions>
 							<ColumnDefinition x:Name="IncompleteSummaryColumn" Width="*"/>
 							<ColumnDefinition x:Name="SummaryColumnGap" Width="14"/>
@@ -987,16 +1161,14 @@
 													<TextBlock Text="{Binding PrimevalCount}"
 															   FontSize="13"
 															   FontWeight="SemiBold"
-															   Foreground="{DynamicResource PrimevalLootTextBrush}"
-															   Effect="{StaticResource PrimevalLootTextGlowEffect}"/>
+															   Foreground="{DynamicResource PrimevalLootTextBrush}"/>
 												</InlineUIContainer>
 												<Run Text="/에픽 "/>
 												<InlineUIContainer BaselineAlignment="Center">
 													<TextBlock Text="{Binding EpicCount}"
 															   FontSize="13"
 															   FontWeight="SemiBold"
-															   Foreground="{DynamicResource EpicLootTextBrush}"
-															   Effect="{StaticResource EpicLootTextGlowEffect}"/>
+															   Foreground="{DynamicResource EpicLootTextBrush}"/>
 												</InlineUIContainer>
 											</TextBlock>
 										</Grid>
@@ -1011,8 +1183,8 @@
 			<TextBlock x:Name="StatusText"
 					   Grid.Row="4"
 					   Foreground="{DynamicResource TertiaryTextBrush}"
-					   FontSize="13"
-					   Margin="0 14 0 0"
+					   FontSize="12"
+					   Margin="0 8 0 -8"
 					   Text=""/>
 
 			<Border x:Name="LoadingOverlay"

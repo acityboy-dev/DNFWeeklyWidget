@@ -20,6 +20,7 @@ internal static class WindowBackdrop
 
 	private enum ACCENT_STATE
 	{
+		ACCENT_ENABLE_GRADIENT = 1,
 		ACCENT_ENABLE_ACRYLICBLURBEHIND = 4
 	}
 
@@ -57,7 +58,7 @@ internal static class WindowBackdrop
 		IntPtr hwnd,
 		ref WINDOWCOMPOSITIONATTRIBDATA data);
 
-	public static void Apply(Window window, bool isLightTheme)
+	public static void Apply(Window window, bool isLightTheme, bool lowPerformanceMode = false)
 	{
 		var hwnd = new WindowInteropHelper(window).Handle;
 		if (hwnd == IntPtr.Zero)
@@ -82,11 +83,13 @@ internal static class WindowBackdrop
 
 		var accent = new ACCENT_POLICY
 		{
-			AccentState = ACCENT_STATE.ACCENT_ENABLE_ACRYLICBLURBEHIND,
-			AccentFlags = 2,
+			AccentState = lowPerformanceMode
+				? ACCENT_STATE.ACCENT_ENABLE_GRADIENT
+				: ACCENT_STATE.ACCENT_ENABLE_ACRYLICBLURBEHIND,
+			AccentFlags = lowPerformanceMode ? 0 : 2,
 			GradientColor = isLightTheme
-				? ToAbgr(0x88, 0xF8, 0xF8, 0xF8)
-				: ToAbgr(0x88, 0x20, 0x22, 0x28),
+				? ToAbgr(lowPerformanceMode ? (byte)0xFA : (byte)0x88, 0xF8, 0xF8, 0xF8)
+				: ToAbgr(lowPerformanceMode ? (byte)0xFA : (byte)0x88, 0x20, 0x22, 0x28),
 			AnimationId = 0
 		};
 
