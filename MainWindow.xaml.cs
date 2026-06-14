@@ -1304,7 +1304,7 @@ public partial class MainWindow : Window
 		_settings.AutoRefreshOnStartup = settingsWindow.AutoRefreshOnStartup;
 		_settings.AutoRefreshIntervalMinutes = ClampAutoRefreshInterval(settingsWindow.AutoRefreshIntervalMinutes);
 		_settings.EnableUserDataCache = settingsWindow.EnableUserDataCache;
-		SaveSettings();
+		SaveSettings(allowWhenDisabled: true);
 		ApplyAutoRefreshInterval();
 		PreviewThemeMode(_settings.ThemeMode);
 		ApplyCharacterImageModeToCurrentRows();
@@ -2157,9 +2157,9 @@ public partial class MainWindow : Window
 			!line.IsFameLocked);
 	}
 
-	private void SaveSettings()
+	private void SaveSettings(bool allowWhenDisabled = false)
 	{
-		if (!_settings.EnableUserDataCache)
+		if (!_settings.EnableUserDataCache && !allowWhenDisabled)
 		{
 			StatusText.Text = LogText.UserDataCacheDisabled;
 			return;

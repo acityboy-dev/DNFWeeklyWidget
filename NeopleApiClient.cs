@@ -242,41 +242,45 @@ public class NeopleApiClient
 	/// <exception cref="HttpRequestException">API 호출 실패 시</exception>
 	private async Task<JsonDocument> GetJsonAsync(string url)
 	{
-		HttpResponseMessage res;
+		var requestPath = new Uri(_httpClient.BaseAddress!, url).AbsolutePath;
+		HttpResponseMessage response;
 		try
 		{
-			res = await _httpClient.GetAsync(url);
+			response = await _httpClient.GetAsync(url);
 		}
 		catch (HttpRequestException ex)
 		{
-			throw new HttpRequestException($"API 요청 실패: {url}", ex);
+			throw new HttpRequestException($"API 요청 실패: {requestPath}", ex);
 		}
 
-		if (!res.IsSuccessStatusCode)
+		using (response)
 		{
-			throw new HttpRequestException(
-				$"API 실패: {(int)res.StatusCode} {res.ReasonPhrase}",
-				null,
-				res.StatusCode);
-		}
+			if (!response.IsSuccessStatusCode)
+			{
+				throw new HttpRequestException(
+					$"API 실패: {(int)response.StatusCode} {response.ReasonPhrase}",
+					null,
+					response.StatusCode);
+			}
 
-		string text;
-		try
-		{
-			text = await res.Content.ReadAsStringAsync();
-		}
-		catch (Exception ex)
-		{
-			throw new HttpRequestException($"응답 읽기 실패: {url}", ex);
-		}
+			string text;
+			try
+			{
+				text = await response.Content.ReadAsStringAsync();
+			}
+			catch (Exception ex)
+			{
+				throw new HttpRequestException($"응답 읽기 실패: {requestPath}", ex);
+			}
 
-		try
-		{
-			return JsonDocument.Parse(text);
-		}
-		catch (JsonException ex)
-		{
-			throw new HttpRequestException($"JSON 파싱 실패: {url}", ex);
+			try
+			{
+				return JsonDocument.Parse(text);
+			}
+			catch (JsonException ex)
+			{
+				throw new HttpRequestException($"JSON 파싱 실패: {requestPath}", ex);
+			}
 		}
 	}
 
