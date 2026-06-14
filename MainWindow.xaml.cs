@@ -98,7 +98,7 @@ public partial class MainWindow : Window
 	private readonly NeopleApiClient _api = new();
 	private readonly DundamClient _dundam = new();
 	private readonly DispatcherTimer _timer = new();
-	private readonly DispatcherTimer _settingsSaveTimer = new();
+	private readonly SettingsPersistenceService _settingsPersistence;
 	private readonly Forms.NotifyIcon _trayIcon = new();
 	private readonly ManualWindowDrag _windowDrag;
 	private System.Windows.Point? _dragStartPoint;
@@ -123,15 +123,12 @@ public partial class MainWindow : Window
 	private bool _isExitRequested;
 	private bool _isRestoringWindowPlacement;
 	private bool _isSummaryPanelExpanded = true;
-	private bool _hasPendingSettingsSave;
 	private bool _isUpdatingPresetList;
 	private bool _suppressNextPresetPanelClick;
 	private bool _isMutatingPresets;
 	private List<CharacterRow> _allCharacterRows = new();
 	private readonly ObservableCollection<CharacterRow> _characterRows = new();
 	private readonly Dictionary<string, ObservableCollection<CharacterRow>> _presetRowCollections = new();
-	private readonly object _settingsSaveQueueLock = new();
-	private Task _settingsSaveQueue = Task.CompletedTask;
 	private int _characterRenderGeneration;
 	private int _busyOverlayDepth;
 	private int _loadingOverlayGeneration;
@@ -145,6 +142,7 @@ public partial class MainWindow : Window
 		_settings = AppSettings.Load();
 		_settings.AutoSortByFame = false;
 		_settings.EnsurePresets();
+		_settingsPersistence = new SettingsPersistenceService(_settings, () => CurrentPreset);
 		RestoreWindowPlacement();
 		_themeOverrideIsLight = ThemeModeToOverride(_settings.ThemeMode);
 		ApplyCurrentTheme();
@@ -168,9 +166,6 @@ public partial class MainWindow : Window
 		ApplyAutoRefreshInterval();
 		_timer.Tick += async (_, _) => await RefreshAsync();
 		_timer.Start();
-
-		_settingsSaveTimer.Interval = TimeSpan.FromMilliseconds(450);
-		_settingsSaveTimer.Tick += (_, _) => FlushPendingSettingsSave();
 
 		if (_settings.AutoRefreshOnStartup)
 			Loaded += async (_, _) => await RefreshAsync();
@@ -336,14 +331,14 @@ public partial class MainWindow : Window
 	{
 		if (!_isExitRequested)
 		{
-			CancelPendingSettingsSave();
+			_settingsPersistence.CancelPendingSave();
 			SaveWindowPlacement();
 			e.Cancel = true;
 			Hide();
 			return;
 		}
 
-		FlushPendingSettingsSave();
+		_settingsPersistence.FlushPendingSave();
 		PersistCurrentPresetFromRows();
 		SaveWindowPlacement();
 		SaveSettings();
@@ -841,7 +836,7 @@ public partial class MainWindow : Window
 		if (_settings.ActivePresetId != selectedPresetId)
 			return;
 
-		ScheduleSettingsSave();
+		_settingsPersistence.ScheduleSave();
 		StatusText.Text = LogText.PresetSelected(CurrentPreset.Name);
 	}
 
@@ -869,7 +864,7 @@ public partial class MainWindow : Window
 			await RenderCharacterRowsAsync(batch: true);
 			ClearIncompleteContentSummary();
 			UpdatePresetList();
-			ScheduleSettingsSave();
+			_settingsPersistence.ScheduleSave();
 			StatusText.Text = LogText.PresetSelected(preset.Name);
 		}
 		finally
@@ -913,7 +908,7 @@ public partial class MainWindow : Window
 
 			_settings.EnsurePresets();
 			UpdatePresetList();
-			ScheduleSettingsSave();
+			_settingsPersistence.ScheduleSave();
 			StatusText.Text = $"{preset.Name} 프리셋을 삭제했습니다.";
 		}
 		finally
@@ -2164,18 +2159,15 @@ public partial class MainWindow : Window
 
 	private void SaveSettings(bool allowWhenDisabled = false)
 	{
-		if (!_settings.EnableUserDataCache && !allowWhenDisabled)
+		if (!_settingsPersistence.Save(allowWhenDisabled))
 		{
 			StatusText.Text = LogText.UserDataCacheDisabled;
-			return;
 		}
-
-		var settingsSnapshot = CreateSettingsSnapshot();
-		EnqueueSettingsSave(settingsSnapshot);
 	}
 
 	private void MarkUserDataDirty()
 	{
+		_settingsPersistence.ScheduleSave();
 	}
 
 	private System.Collections.ObjectModel.ObservableCollection<CharacterRow>? GetCharacterCollection()
@@ -2186,193 +2178,16 @@ public partial class MainWindow : Window
 		return _characterRows;
 	}
 
-	private void ScheduleSettingsSave()
-	{
-		if (!_settings.EnableUserDataCache)
-			return;
-
-		_hasPendingSettingsSave = true;
-		_settingsSaveTimer.Stop();
-		_settingsSaveTimer.Start();
-	}
-
-	private void FlushPendingSettingsSave()
-	{
-		_settingsSaveTimer.Stop();
-		if (!_hasPendingSettingsSave)
-			return;
-
-		_hasPendingSettingsSave = false;
-		if (!_settings.EnableUserDataCache)
-			return;
-
-		var settingsSnapshot = CreateSettingsSnapshot();
-		EnqueueSettingsSave(settingsSnapshot);
-	}
-
-	private void EnqueueSettingsSave(AppSettings settingsSnapshot)
-	{
-		lock (_settingsSaveQueueLock)
-		{
-			_settingsSaveQueue = _settingsSaveQueue
-				.ContinueWith(
-					previous =>
-					{
-						_ = previous.Exception;
-						settingsSnapshot.Save();
-					},
-					CancellationToken.None,
-					TaskContinuationOptions.None,
-					TaskScheduler.Default);
-		}
-	}
-
 	private void WaitForQueuedSettingsSave()
 	{
-		Task saveQueue;
-		lock (_settingsSaveQueueLock)
-			saveQueue = _settingsSaveQueue;
-
 		try
 		{
-			saveQueue.GetAwaiter().GetResult();
+			_settingsPersistence.WaitForQueuedSave();
 		}
 		catch (Exception ex)
 		{
 			StatusText.Text = LogText.Error(ex.Message);
 		}
-	}
-
-	private void CancelPendingSettingsSave()
-	{
-		_settingsSaveTimer.Stop();
-		_hasPendingSettingsSave = false;
-	}
-
-	private AppSettings CreateSettingsSnapshot()
-	{
-		return new AppSettings
-		{
-			ApiKey = _settings.ApiKey,
-			ServerId = _settings.ServerId,
-			ThemeMode = _settings.ThemeMode,
-			CharacterImageMode = _settings.CharacterImageMode,
-			IsCompactMode = _settings.IsCompactMode,
-			FilterIncompleteOnly = _settings.FilterIncompleteOnly,
-			AutoSortByFame = _settings.AutoSortByFame,
-			LowPerformanceMode = _settings.LowPerformanceMode,
-			AutoRefreshOnStartup = _settings.AutoRefreshOnStartup,
-			AutoRefreshIntervalMinutes = _settings.AutoRefreshIntervalMinutes,
-			EnableUserDataCache = _settings.EnableUserDataCache,
-			Columns = _settings.Columns,
-			WindowLeft = _settings.WindowLeft,
-			WindowTop = _settings.WindowTop,
-			WindowWidth = _settings.WindowWidth,
-			WindowHeight = _settings.WindowHeight,
-			ActivePresetId = _settings.ActivePresetId,
-			Characters = CurrentPreset.Characters
-				.Select(x => new SavedCharacter
-				{
-					ServerId = x.ServerId,
-					CharacterName = x.CharacterName
-				})
-				.ToList(),
-			CachedCards = CloneCachedCards(CurrentPreset.CachedCards),
-			Presets = _settings.Presets
-				.Select(x => new CardEntryPreset
-				{
-					Id = x.Id,
-					Name = x.Name,
-					Characters = x.Characters
-						.Select(character => new SavedCharacter
-						{
-							ServerId = character.ServerId,
-							CharacterName = character.CharacterName
-						})
-						.ToList(),
-					CachedCards = CloneCachedCards(x.CachedCards)
-				})
-				.ToList(),
-			WeeklyContents = new WeeklyContentSettings
-			{
-				ShowWeeklyEquipmentLoot = _settings.WeeklyContents.ShowWeeklyEquipmentLoot,
-				ShowWeeklyOathLoot = _settings.WeeklyContents.ShowWeeklyOathLoot,
-				ShowWeeklyCrystalLoot = _settings.WeeklyContents.ShowWeeklyCrystalLoot,
-				ShowVenus = _settings.WeeklyContents.ShowVenus,
-				ShowApocalypse = _settings.WeeklyContents.ShowApocalypse,
-				ShowBakalRaid = _settings.WeeklyContents.ShowBakalRaid,
-				ShowNabelRaid = _settings.WeeklyContents.ShowNabelRaid,
-				ShowNormalNabelRaid = _settings.WeeklyContents.ShowNormalNabelRaid,
-				ShowHardNabelRaid = _settings.WeeklyContents.ShowHardNabelRaid,
-				ShowTwilightOfInae = _settings.WeeklyContents.ShowTwilightOfInae,
-				ShowDiregieRaid = _settings.WeeklyContents.ShowDiregieRaid,
-				ShowHardMistRaid = _settings.WeeklyContents.ShowHardMistRaid
-			}
-		};
-	}
-
-	private static List<CachedCharacterCard> CloneCachedCards(IEnumerable<CachedCharacterCard> cards)
-	{
-		return cards
-			.Select(x => new CachedCharacterCard
-			{
-				ServerId = x.ServerId,
-				ServerName = x.ServerName,
-				CharacterName = x.CharacterName,
-				JobName = x.JobName,
-				Fame = x.Fame,
-				JobSummary = x.JobSummary,
-				FameSummary = x.FameSummary,
-				MetaSummary = x.MetaSummary,
-				BaseSummary = x.BaseSummary,
-				Summary = x.Summary,
-				WeeklyStatus = CloneWeeklyStatus(x.WeeklyStatus),
-				SummaryLines = x.SummaryLines
-					.Select(CloneCachedSummaryLine)
-					.ToList(),
-				ImagePath = x.ImagePath,
-				CompactImageOffsetX = x.CompactImageOffsetX,
-				CompactImageOffsetY = x.CompactImageOffsetY
-			})
-			.ToList();
-	}
-
-	private static CachedSummaryLine CloneCachedSummaryLine(CachedSummaryLine line)
-	{
-		return new CachedSummaryLine
-		{
-			Text = line.Text,
-			Marker = line.Marker,
-			Body = line.Body,
-			DetailedBody = line.DetailedBody,
-			IsWeeklyLoot = line.IsWeeklyLoot,
-			LootTitle = line.LootTitle,
-			PrimevalCount = line.PrimevalCount,
-			EpicCount = line.EpicCount,
-			IsCleared = line.IsCleared,
-			IsLimitedOut = line.IsLimitedOut,
-			IsFameLocked = line.IsFameLocked,
-			IsSeparator = line.IsSeparator
-		};
-	}
-
-	private static CharacterWeeklyStatus? CloneWeeklyStatus(CharacterWeeklyStatus? status)
-	{
-		if (status is null)
-			return null;
-
-		return new CharacterWeeklyStatus
-		{
-			IsAvailable = status.IsAvailable,
-			Contents = status.Contents
-				.Select(x => new WeeklyContentResult
-				{
-					Id = x.Id,
-					Name = x.Name,
-					IsCleared = x.IsCleared
-				})
-				.ToList()
-		};
 	}
 
 	private void ApplyInputToSettings()
@@ -2453,10 +2268,10 @@ public partial class MainWindow : Window
 
 		_settings.WindowLeft = Left;
 		_settings.WindowTop = Top;
-		_settings.WindowWidth = Width;
-		_settings.WindowHeight = Height;
-		if (_settings.EnableUserDataCache)
-			ScheduleSettingsSave();
+			_settings.WindowWidth = Width;
+			_settings.WindowHeight = Height;
+			if (_settings.EnableUserDataCache)
+				_settingsPersistence.ScheduleSave();
 	}
 
 	private static bool IsUsableWindowPlacement(double left, double top, double width, double height)
