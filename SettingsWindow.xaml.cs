@@ -115,7 +115,7 @@ public partial class SettingsWindow : Window
 	public int AutoRefreshIntervalMinutes => int.TryParse(AutoRefreshIntervalBox.Text, out var minutes)
 		? ClampAutoRefreshInterval(minutes)
 		: 30;
-	public bool ShowInTaskbar => ShowInTaskbarBox.IsChecked == true;
+	public bool ShowInTaskbarSetting => ShowInTaskbarBox.IsChecked == true;
 	public bool EnableUserDataCache => EnableUserDataCacheBox.IsChecked == true;
 
 	public WeeklyContentSettings WeeklyContents => new()

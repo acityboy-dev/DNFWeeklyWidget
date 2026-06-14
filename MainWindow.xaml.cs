@@ -97,9 +97,12 @@ public partial class MainWindow : Window
 	private readonly AppSettings _settings;
 	private readonly DundamClient _dundam = new();
 	private readonly DispatcherTimer _timer = new();
+	private readonly DispatcherTimer _weeklyResetTimer = new() { Interval = TimeSpan.FromMinutes(1) };
+	private readonly DispatcherTimer _weeklyResetNoticeTimer = new() { Interval = TimeSpan.FromMinutes(30) };
 	private readonly SettingsPersistenceService _settingsPersistence;
 	private readonly PresetService _presetService;
 	private readonly CharacterCardService _characterCardService;
+	private readonly WeeklyResetNoticeService _weeklyResetNoticeService = new();
 	private readonly Forms.NotifyIcon _trayIcon = new();
 	private readonly ManualWindowDrag _windowDrag;
 	private System.Windows.Point? _dragStartPoint;
@@ -125,6 +128,12 @@ public partial class MainWindow : Window
 	private bool _hasShownTrayRestoreHint;
 	private bool _isRestoringWindowPlacement;
 	private bool _isSummaryPanelExpanded = true;
+	private bool _hasSummaryContent;
+	private DateTime? _weeklyResetAt;
+	private DateTime _weeklyResetDate;
+	private bool _isWeeklyResetNoticeApplied;
+	private bool _isWeeklyResetNoticeRefreshing;
+	private bool _isWeeklyResetDebugOverride;
 	private bool _isUpdatingPresetList;
 	private bool _suppressNextPresetPanelClick;
 	private bool _isMutatingPresets;
@@ -165,6 +174,12 @@ public partial class MainWindow : Window
 		ApplyHeaderButtonLayout();
 		UpdatePresetList();
 		LoadCachedCharacterRows();
+		UpdateWeeklyResetText();
+		_weeklyResetTimer.Tick += (_, _) => UpdateWeeklyResetText();
+		_weeklyResetTimer.Start();
+		_weeklyResetNoticeTimer.Tick += async (_, _) => await RefreshWeeklyResetNoticeAsync();
+		_weeklyResetNoticeTimer.Start();
+		Loaded += async (_, _) => await RefreshWeeklyResetNoticeAsync();
 
 		ApplyAutoRefreshInterval();
 		_timer.Tick += async (_, _) => await RefreshAsync();
@@ -352,6 +367,9 @@ public partial class MainWindow : Window
 
 	protected override void OnClosed(EventArgs e)
 	{
+		_timer.Stop();
+		_weeklyResetTimer.Stop();
+		_weeklyResetNoticeTimer.Stop();
 		CloseTrayContextMenu();
 		SystemEvents.UserPreferenceChanged -= SystemEvents_UserPreferenceChanged;
 		_trayIcon.Visible = false;
@@ -1277,7 +1295,7 @@ public partial class MainWindow : Window
 		_settings.Columns = settingsWindow.Columns;
 		_settings.AutoRefreshOnStartup = settingsWindow.AutoRefreshOnStartup;
 		_settings.AutoRefreshIntervalMinutes = ClampAutoRefreshInterval(settingsWindow.AutoRefreshIntervalMinutes);
-		_settings.ShowInTaskbar = settingsWindow.ShowInTaskbar;
+		_settings.ShowInTaskbar = settingsWindow.ShowInTaskbarSetting;
 		_settings.EnableUserDataCache = settingsWindow.EnableUserDataCache;
 		ShowInTaskbar = _settings.ShowInTaskbar;
 		SaveSettings(allowWhenDisabled: true);
@@ -1451,7 +1469,7 @@ public partial class MainWindow : Window
 	{
 		IncompleteSummaryList.ItemsSource = Array.Empty<IncompleteContentGroup>();
 		WeeklyLootSummaryList.ItemsSource = Array.Empty<WeeklyLootSummaryGroup>();
-		IncompleteSummaryPanel.Visibility = Visibility.Collapsed;
+		UpdateSummaryContentAvailability(false);
 	}
 
 	private void UpdateBottomSummaryPanel(IReadOnlyList<CharacterRow> rows, WeeklyDisplayContext context)
@@ -1461,10 +1479,116 @@ public partial class MainWindow : Window
 		IncompleteSummaryList.ItemsSource = incompleteGroups;
 		WeeklyLootSummaryList.ItemsSource = lootGroups;
 		UpdateWeeklyLootSummaryVisibility(lootGroups.Count > 0);
+		UpdateSummaryContentAvailability(incompleteGroups.Count > 0 || lootGroups.Count > 0);
+	}
+
+	private void UpdateWeeklyResetText()
+	{
+		var now = DateTime.Now;
+		var expectedResetDate = GetUpcomingThursday(now);
+		var nextReset = _weeklyResetAt is { } noticeReset && noticeReset.Date == expectedResetDate
+			? noticeReset
+			: expectedResetDate.AddHours(6);
+		if (nextReset <= now)
+		{
+			expectedResetDate = GetUpcomingThursday(now.AddDays(1));
+			_weeklyResetAt = null;
+			_isWeeklyResetNoticeApplied = false;
+			_isWeeklyResetDebugOverride = false;
+			_weeklyResetNoticeTimer.Start();
+			nextReset = expectedResetDate.AddHours(6);
+		}
+		_weeklyResetDate = expectedResetDate;
+
+		var remaining = nextReset - now;
+		var remainingText = remaining.TotalMinutes < 1
+			? "곧 초기화"
+			: remaining.Days > 0
+				? $"{remaining.Days}일 {remaining.Hours}시간 {remaining.Minutes}분 후"
+				: remaining.Hours > 0
+					? $"{remaining.Hours}시간 {remaining.Minutes}분 후"
+					: $"{Math.Max(1, remaining.Minutes)}분 후";
+
+		var maintenanceStatus = _isWeeklyResetNoticeApplied || _isWeeklyResetDebugOverride
+			? "점검 반영"
+			: "점검 미반영";
+		WeeklyResetText.Text = $"주간 초기화 ({maintenanceStatus}) · {remainingText} · {nextReset:M/d(ddd) HH:mm}";
+	}
+
+	private async Task RefreshWeeklyResetNoticeAsync()
+	{
+		if (_isWeeklyResetNoticeApplied || _isWeeklyResetDebugOverride || _isWeeklyResetNoticeRefreshing)
+			return;
+
+		var now = DateTime.Now;
+		var expectedResetDate = _weeklyResetDate;
+		var noticeCheckStartsAt = expectedResetDate.AddDays(-2).AddHours(17);
+		if (now < noticeCheckStartsAt)
+			return;
+
+		_isWeeklyResetNoticeRefreshing = true;
+		try
+		{
+			var noticeReset = await _weeklyResetNoticeService.GetUpcomingWeeklyResetAsync(expectedResetDate);
+			if (noticeReset is null)
+				return;
+
+			_weeklyResetAt = noticeReset;
+			_isWeeklyResetNoticeApplied = true;
+			_weeklyResetNoticeTimer.Stop();
+			UpdateWeeklyResetText();
+		}
+		finally
+		{
+			_isWeeklyResetNoticeRefreshing = false;
+		}
+	}
+
+	private async Task ApplyPreviousMaintenanceTimeAsync(int weeksAgo)
+	{
+		var upcomingThursday = _weeklyResetDate;
+		var previousMaintenanceDate = upcomingThursday.AddDays(-7 * weeksAgo);
+		var maintenanceStart = await _weeklyResetNoticeService.GetMaintenanceStartAsync(previousMaintenanceDate);
+		if (maintenanceStart is null)
+		{
+			StatusText.Text = $"{weeksAgo}주 전 정기점검 시간을 불러오지 못했습니다.";
+			return;
+		}
+
+		_weeklyResetAt = upcomingThursday.Add(maintenanceStart.Value.TimeOfDay);
+		_isWeeklyResetNoticeApplied = false;
+		_isWeeklyResetDebugOverride = true;
+		_weeklyResetNoticeTimer.Stop();
+		UpdateWeeklyResetText();
+		StatusText.Text = $"디버그: {weeksAgo}주 전 점검 시작 시각 {maintenanceStart.Value:HH:mm}을 강제 적용했습니다.";
+	}
+
+	private async Task ClearMaintenanceTimeOverrideAsync()
+	{
+		_weeklyResetAt = null;
+		_isWeeklyResetNoticeApplied = false;
+		_isWeeklyResetDebugOverride = false;
+		_weeklyResetNoticeTimer.Start();
+		UpdateWeeklyResetText();
+		StatusText.Text = "디버그 점검시간 강제 적용을 해제했습니다.";
+
+		await RefreshWeeklyResetNoticeAsync();
+	}
+
+	private static DateTime GetUpcomingThursday(DateTime now)
+	{
+		var daysUntilThursday = ((int)DayOfWeek.Thursday - (int)now.DayOfWeek + 7) % 7;
+		return now.Date.AddDays(daysUntilThursday);
+	}
+
+	private void UpdateSummaryContentAvailability(bool hasContent)
+	{
+		_hasSummaryContent = hasContent;
+		SummaryPanelHeader.Cursor = hasContent
+			? System.Windows.Input.Cursors.Hand
+			: System.Windows.Input.Cursors.Arrow;
+		SummaryPanelToggleIcon.Visibility = hasContent ? Visibility.Visible : Visibility.Collapsed;
 		UpdateSummaryPanelExpansion();
-		IncompleteSummaryPanel.Visibility = incompleteGroups.Count > 0 || lootGroups.Count > 0
-			? Visibility.Visible
-			: Visibility.Collapsed;
 	}
 
 	private void UpdateWeeklyLootSummaryVisibility(bool isVisible)
@@ -1488,12 +1612,16 @@ public partial class MainWindow : Window
 
 	private void ToggleSummaryPanel()
 	{
+		if (!_hasSummaryContent)
+			return;
+
 		_isSummaryPanelExpanded = !_isSummaryPanelExpanded;
 		UpdateSummaryPanelExpansion(animate: true);
 	}
 
 	private void UpdateSummaryPanelExpansion(bool animate = false)
 	{
+		var isExpanded = _hasSummaryContent && _isSummaryPanelExpanded;
 		SummaryPanelToggleIcon.Data = Geometry.Parse(_isSummaryPanelExpanded
 			? "M 4 7 L 8 11 L 12 7"
 			: "M 4 10 L 8 6 L 12 10");
@@ -1502,15 +1630,15 @@ public partial class MainWindow : Window
 		{
 			SummaryPanelBody.BeginAnimation(HeightProperty, null);
 			SummaryPanelBody.BeginAnimation(OpacityProperty, null);
-			SummaryPanelBody.Height = _isSummaryPanelExpanded ? double.NaN : 0;
-			SummaryPanelBody.Opacity = _isSummaryPanelExpanded ? 1 : 0;
-			SummaryPanelBody.Visibility = _isSummaryPanelExpanded
+			SummaryPanelBody.Height = isExpanded ? double.NaN : 0;
+			SummaryPanelBody.Opacity = isExpanded ? 1 : 0;
+			SummaryPanelBody.Visibility = isExpanded
 				? Visibility.Visible
 				: Visibility.Collapsed;
 			return;
 		}
 
-		AnimateSummaryPanelBody(_isSummaryPanelExpanded);
+		AnimateSummaryPanelBody(isExpanded);
 	}
 
 	private void AnimateSummaryPanelBody(bool expand)
@@ -2377,6 +2505,14 @@ public partial class MainWindow : Window
 		themeMenu.DropDownItems.Add(_darkThemeMenuItem);
 		menu.Items.Add(themeMenu);
 
+		var weeklyResetDebugMenu = new Forms.ToolStripMenuItem("점검시간 강제 적용 (디버그)");
+		weeklyResetDebugMenu.DropDownItems.Add(CreateTrayAsyncMenuItem("1주 전 점검시간", () => ApplyPreviousMaintenanceTimeAsync(1)));
+		weeklyResetDebugMenu.DropDownItems.Add(CreateTrayAsyncMenuItem("2주 전 점검시간", () => ApplyPreviousMaintenanceTimeAsync(2)));
+		weeklyResetDebugMenu.DropDownItems.Add(CreateTrayAsyncMenuItem("3주 전 점검시간", () => ApplyPreviousMaintenanceTimeAsync(3)));
+		weeklyResetDebugMenu.DropDownItems.Add(new Forms.ToolStripSeparator());
+		weeklyResetDebugMenu.DropDownItems.Add(CreateTrayAsyncMenuItem("강제 적용 해제", ClearMaintenanceTimeOverrideAsync));
+		menu.Items.Add(weeklyResetDebugMenu);
+
 		menu.Items.Add(new Forms.ToolStripSeparator());
 		menu.Items.Add(CreateTrayMenuItem("\uC885\uB8CC", ExitApplication));
 		return menu;
@@ -2389,6 +2525,17 @@ public partial class MainWindow : Window
 		{
 			CloseTrayContextMenu();
 			Dispatcher.Invoke(action);
+		};
+		return item;
+	}
+
+	private Forms.ToolStripMenuItem CreateTrayAsyncMenuItem(string header, Func<Task> action)
+	{
+		var item = new Forms.ToolStripMenuItem(header);
+		item.Click += async (_, _) =>
+		{
+			CloseTrayContextMenu();
+			await action();
 		};
 		return item;
 	}
