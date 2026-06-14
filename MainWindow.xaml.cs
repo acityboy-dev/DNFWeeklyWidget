@@ -26,6 +26,7 @@ public partial class MainWindow : Window
 	private const double DeleteDropZoneRevealDistance = 260.0;
 	private const double DropIndicatorFadeMilliseconds = 140.0;
 	private const double CardScrollWheelStep = 168.0;
+	private const double CompactHeaderWidthThreshold = 900.0;
 
 	private static class LogText
 	{
@@ -159,7 +160,7 @@ public partial class MainWindow : Window
 		_settings.Columns = ClampColumns(_settings.Columns);
 		CharacterList.Tag = _settings.Columns;
 		ApplyCompactMode();
-		UpdateToolbarOptionButtons();
+		ApplyHeaderButtonLayout();
 		UpdatePresetList();
 		LoadCachedCharacterRows();
 
@@ -709,7 +710,7 @@ public partial class MainWindow : Window
 	{
 		_settings.FilterIncompleteOnly = !_settings.FilterIncompleteOnly;
 		RenderCharacterRows();
-		UpdateToolbarOptionButtons();
+		ApplyHeaderButtonLayout();
 		SaveSettings();
 		StatusText.Text = _settings.FilterIncompleteOnly
 			? LogText.IncompleteFilterOn
@@ -1031,32 +1032,30 @@ public partial class MainWindow : Window
 		_presetService.PersistRows(_allCharacterRows);
 	}
 
-	private void UpdateToolbarOptionButtons()
+	private void UpdateToolbarOptionButtons(bool useCompactButtons)
 	{
-		var isCompact = _settings.IsCompactMode;
-
 		IncompleteFilterButton.Content = _settings.FilterIncompleteOnly
-			? isCompact ? "전" : "전체보기"
-			: isCompact ? "미" : "미완료만";
-		IncompleteFilterButton.Width = isCompact ? 30 : 76;
-		IncompleteFilterButton.Height = isCompact ? 26 : 34;
-		IncompleteFilterButton.FontSize = isCompact ? 12 : 13;
+			? useCompactButtons ? "전" : "전체보기"
+			: useCompactButtons ? "미" : "미완료만";
+		IncompleteFilterButton.Width = useCompactButtons ? 30 : 76;
+		IncompleteFilterButton.Height = useCompactButtons ? 26 : 34;
+		IncompleteFilterButton.FontSize = useCompactButtons ? 12 : 13;
 		IncompleteFilterButton.Padding = new Thickness(0);
 		IncompleteFilterButton.Opacity = _settings.FilterIncompleteOnly ? 1.0 : 0.68;
 
-		FameSortButton.Content = isCompact ? "명" : "명성순";
-		FameSortButton.Width = isCompact ? 30 : 64;
-		FameSortButton.Height = isCompact ? 26 : 34;
-		FameSortButton.FontSize = isCompact ? 12 : 13;
+		FameSortButton.Content = useCompactButtons ? "명" : "명성순";
+		FameSortButton.Width = useCompactButtons ? 30 : 64;
+		FameSortButton.Height = useCompactButtons ? 26 : 34;
+		FameSortButton.FontSize = useCompactButtons ? 12 : 13;
 		FameSortButton.Padding = new Thickness(0);
 		FameSortButton.Opacity = 1.0;
 
-		ClearAllButton.Content = isCompact ? "삭" : "전체삭제";
-		ClearAllButton.Width = isCompact ? 30 : 70;
-		ClearAllButton.Height = isCompact ? 26 : 34;
-		ClearAllButton.FontSize = isCompact ? 12 : 13;
+		ClearAllButton.Content = useCompactButtons ? "삭" : "전체삭제";
+		ClearAllButton.Width = useCompactButtons ? 30 : 70;
+		ClearAllButton.Height = useCompactButtons ? 26 : 34;
+		ClearAllButton.FontSize = useCompactButtons ? 12 : 13;
 		ClearAllButton.Padding = new Thickness(0);
-		ClearAllButton.Margin = new Thickness(0, 0, isCompact ? 12 : 18, 0);
+		ClearAllButton.Margin = new Thickness(0, 0, useCompactButtons ? 12 : 18, 0);
 	}
 
 	private void ApplyCompactMode(bool animate = false)
@@ -1067,38 +1066,46 @@ public partial class MainWindow : Window
 		TitleBar.Margin = isCompact ? new Thickness(0, 0, 0, 8) : new Thickness(0, 0, 0, 18);
 		TitleText.FontSize = isCompact ? 15 : 24;
 
-		RefreshNowButton.Width = isCompact ? 28 : 88;
-		RefreshNowButton.Height = isCompact ? 26 : 34;
-		RefreshNowButton.FontSize = isCompact ? 11 : 14;
-		RefreshNowButton.Margin = new Thickness(0, 0, 8, 0);
-		RefreshNowButton.Padding = isCompact ? new Thickness(0) : new Thickness(10, 4, 10, 4);
-		RefreshNowText.Visibility = isCompact ? Visibility.Collapsed : Visibility.Visible;
-		RefreshNowIcon.Visibility = isCompact ? Visibility.Visible : Visibility.Collapsed;
-
-		SettingsButton.Width = isCompact ? 28 : 68;
-		SettingsButton.Height = isCompact ? 26 : 34;
-		SettingsButton.FontSize = isCompact ? 12 : 14;
-		SettingsButton.Margin = new Thickness(0, 0, 8, 0);
-		SettingsButton.Padding = isCompact ? new Thickness(0) : new Thickness(10, 4, 10, 4);
-		SettingsText.Visibility = isCompact ? Visibility.Collapsed : Visibility.Visible;
-		SettingsIcon.Visibility = isCompact ? Visibility.Visible : Visibility.Collapsed;
-
-		CompactModeButton.Width = isCompact ? 28 : 36;
-		CompactModeButton.Height = isCompact ? 26 : 34;
-		CompactModeButton.Margin = new Thickness(0, 0, 8, 0);
-		CompactModeIcon.Width = isCompact ? 13 : 16;
-		CompactModeIcon.Height = isCompact ? 13 : 16;
 		CompactModeIcon.Data = Geometry.Parse(isCompact
 			? "M 2 6 L 8 12 L 14 6 M 2 1 L 14 1"
 			: "M 2 10 L 8 4 L 14 10 M 2 15 L 14 15");
 
-		CloseButton.Width = isCompact ? 28 : 36;
-		CloseButton.Height = isCompact ? 26 : 34;
-		CloseIcon.Width = isCompact ? 13 : 16;
-		CloseIcon.Height = isCompact ? 13 : 16;
-
-		UpdateToolbarOptionButtons();
+		ApplyHeaderButtonLayout();
 		UpdateCurrentCardWidths(force: true);
+	}
+
+	private void ApplyHeaderButtonLayout()
+	{
+		var useCompactButtons = _settings.IsCompactMode || ActualWidth <= CompactHeaderWidthThreshold;
+
+		RefreshNowButton.Width = useCompactButtons ? 28 : 88;
+		RefreshNowButton.Height = useCompactButtons ? 26 : 34;
+		RefreshNowButton.FontSize = useCompactButtons ? 11 : 14;
+		RefreshNowButton.Margin = new Thickness(0, 0, 8, 0);
+		RefreshNowButton.Padding = useCompactButtons ? new Thickness(0) : new Thickness(10, 4, 10, 4);
+		RefreshNowText.Visibility = useCompactButtons ? Visibility.Collapsed : Visibility.Visible;
+		RefreshNowIcon.Visibility = useCompactButtons ? Visibility.Visible : Visibility.Collapsed;
+
+		SettingsButton.Width = useCompactButtons ? 28 : 68;
+		SettingsButton.Height = useCompactButtons ? 26 : 34;
+		SettingsButton.FontSize = useCompactButtons ? 12 : 14;
+		SettingsButton.Margin = new Thickness(0, 0, 8, 0);
+		SettingsButton.Padding = useCompactButtons ? new Thickness(0) : new Thickness(10, 4, 10, 4);
+		SettingsText.Visibility = useCompactButtons ? Visibility.Collapsed : Visibility.Visible;
+		SettingsIcon.Visibility = useCompactButtons ? Visibility.Visible : Visibility.Collapsed;
+
+		CompactModeButton.Width = useCompactButtons ? 28 : 36;
+		CompactModeButton.Height = useCompactButtons ? 26 : 34;
+		CompactModeButton.Margin = new Thickness(0, 0, 8, 0);
+		CompactModeIcon.Width = useCompactButtons ? 13 : 16;
+		CompactModeIcon.Height = useCompactButtons ? 13 : 16;
+
+		CloseButton.Width = useCompactButtons ? 28 : 36;
+		CloseButton.Height = useCompactButtons ? 26 : 34;
+		CloseIcon.Width = useCompactButtons ? 13 : 16;
+		CloseIcon.Height = useCompactButtons ? 13 : 16;
+
+		UpdateToolbarOptionButtons(useCompactButtons);
 	}
 
 	private void ApplyHudPanelCompactState(bool isCompact, bool animate)
@@ -2029,6 +2036,10 @@ public partial class MainWindow : Window
 
 	private void Window_SizeChanged(object sender, SizeChangedEventArgs e)
 	{
+		if (_settings is null)
+			return;
+
+		ApplyHeaderButtonLayout();
 		SaveWindowPlacement();
 	}
 

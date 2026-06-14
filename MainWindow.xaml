@@ -468,9 +468,13 @@
 				</Border>
 			</Popup>
 
-			<DockPanel x:Name="TitleBar"
-					   Grid.Row="0"
-					   Margin="0 0 0 18">
+			<Grid x:Name="TitleBar"
+				  Grid.Row="0"
+				  Margin="0 0 0 18">
+				<Grid.ColumnDefinitions>
+					<ColumnDefinition Width="*"/>
+					<ColumnDefinition Width="Auto"/>
+				</Grid.ColumnDefinitions>
 				<TextBlock x:Name="TitleText"
 						   Text="DNF Weekly Widget"
 						   FontFamily="Segoe UI Variable Display, Segoe UI"
@@ -478,11 +482,13 @@
 						   FontSize="24"
 						   FontWeight="Regular"
 						   VerticalAlignment="Center"
-						   DockPanel.Dock="Left"/>
+						   TextTrimming="CharacterEllipsis"
+						   Margin="0 0 12 0"/>
 
-				<StackPanel Orientation="Horizontal"
+				<StackPanel Grid.Column="1"
+							Orientation="Horizontal"
 							HorizontalAlignment="Right"
-							DockPanel.Dock="Right">
+							VerticalAlignment="Center">
 					<Button x:Name="IncompleteFilterButton"
 							Content="미완료만"
 							Width="76"
@@ -602,7 +608,7 @@
 							  Height="16"/>
 					</Button>
 				</StackPanel>
-			</DockPanel>
+			</Grid>
 
 			<StackPanel Grid.Row="1" Margin="0 0 0 18" Visibility="Collapsed">
 				<DockPanel Margin="0 0 0 10">
