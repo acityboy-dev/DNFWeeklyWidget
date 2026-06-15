@@ -27,6 +27,8 @@ public partial class MainWindow : Window
 	private const double DropIndicatorFadeMilliseconds = 140.0;
 	private const double CardScrollWheelStep = 168.0;
 	private const double CompactHeaderWidthThreshold = 765.0;
+	private const int WmEnterSizeMove = 0x0231;
+	private const int WmExitSizeMove = 0x0232;
 
 	private static class LogText
 	{
@@ -99,6 +101,8 @@ public partial class MainWindow : Window
 	private readonly DispatcherTimer _timer = new();
 	private readonly DispatcherTimer _weeklyResetTimer = new() { Interval = TimeSpan.FromMinutes(1) };
 	private readonly DispatcherTimer _weeklyResetNoticeTimer = new() { Interval = TimeSpan.FromMinutes(30) };
+	private readonly DispatcherTimer _resizeHeaderTimer = new() { Interval = TimeSpan.FromMilliseconds(120) };
+	private readonly DispatcherTimer _windowPlacementTimer = new() { Interval = TimeSpan.FromMilliseconds(180) };
 	private readonly SettingsPersistenceService _settingsPersistence;
 	private readonly PresetService _presetService;
 	private readonly CharacterCardService _characterCardService;
@@ -143,6 +147,12 @@ public partial class MainWindow : Window
 	private int _busyOverlayDepth;
 	private int _loadingOverlayGeneration;
 	private double _lastCardWidth;
+	private HwndSource? _windowSource;
+	private bool _isNativeSizeMove;
+	private bool _isCardWidthUpdateQueued;
+	private double? _queuedCardLayoutWidth;
+	private bool? _lastHeaderCompactMode;
+	private bool? _lastCompactOptionButtons;
 	private CardEntryPreset CurrentPreset => _presetService.CurrentPreset;
 
 	public MainWindow()
@@ -154,6 +164,18 @@ public partial class MainWindow : Window
 		_presetService = new PresetService(_settings);
 		_settingsPersistence = new SettingsPersistenceService(_settings, () => CurrentPreset);
 		_characterCardService = new CharacterCardService(_settings);
+		if (!StartupRegistrationService.TryApply(_settings.RunAtWindowsStartup, out _))
+			_settings.RunAtWindowsStartup = false;
+		_resizeHeaderTimer.Tick += (_, _) =>
+		{
+			_resizeHeaderTimer.Stop();
+			ApplyHeaderButtonLayout();
+		};
+		_windowPlacementTimer.Tick += (_, _) =>
+		{
+			_windowPlacementTimer.Stop();
+			SaveWindowPlacement();
+		};
 		ShowInTaskbar = _settings.ShowInTaskbar;
 		RestoreWindowPlacement();
 		_themeOverrideIsLight = ThemeModeToOverride(_settings.ThemeMode);
@@ -171,7 +193,7 @@ public partial class MainWindow : Window
 		_settings.Columns = ClampColumns(_settings.Columns);
 		CharacterList.Tag = _settings.Columns;
 		ApplyCompactMode();
-		ApplyHeaderButtonLayout();
+		ApplyHeaderButtonLayout(force: true);
 		UpdatePresetList();
 		LoadCachedCharacterRows();
 		UpdateWeeklyResetText();
@@ -331,8 +353,12 @@ public partial class MainWindow : Window
         base.OnSourceInitialized(e);
 
         var hwnd = new WindowInteropHelper(this).Handle;
-        if (PresentationSource.FromVisual(this) is HwndSource source)
-            source.CompositionTarget.BackgroundColor = Colors.Transparent;
+		if (PresentationSource.FromVisual(this) is HwndSource source)
+		{
+			_windowSource = source;
+			source.CompositionTarget.BackgroundColor = Colors.Transparent;
+			source.AddHook(WindowMessageHook);
+		}
 
         int corner = (int)DWM_WINDOW_CORNER_PREFERENCE.DWMWCP_ROUND;
 
@@ -367,6 +393,11 @@ public partial class MainWindow : Window
 
 	protected override void OnClosed(EventArgs e)
 	{
+		_windowSource?.RemoveHook(WindowMessageHook);
+		_windowSource = null;
+		_resizeHeaderTimer.Stop();
+		_windowPlacementTimer.Stop();
+		MarqueeTextBlock.IsAnimationSuspended = false;
 		_timer.Stop();
 		_weeklyResetTimer.Stop();
 		_weeklyResetNoticeTimer.Stop();
@@ -375,6 +406,33 @@ public partial class MainWindow : Window
 		_trayIcon.Visible = false;
 		_trayIcon.Dispose();
 		base.OnClosed(e);
+	}
+
+	private IntPtr WindowMessageHook(
+		IntPtr hwnd,
+		int message,
+		IntPtr wParam,
+		IntPtr lParam,
+		ref bool handled)
+	{
+		switch (message)
+		{
+			case WmEnterSizeMove:
+				_isNativeSizeMove = true;
+				MarqueeTextBlock.IsAnimationSuspended = true;
+				break;
+
+			case WmExitSizeMove:
+				_isNativeSizeMove = false;
+				MarqueeTextBlock.IsAnimationSuspended = false;
+				ScheduleCardWidthUpdate(GetCardLayoutContentWidth(CharacterScrollViewer.ActualWidth));
+
+				ScheduleHeaderLayoutUpdate();
+				ScheduleWindowPlacementSave();
+				break;
+		}
+
+		return IntPtr.Zero;
 	}
 
 	private void SystemEvents_UserPreferenceChanged(object sender, UserPreferenceChangedEventArgs e)
@@ -435,6 +493,66 @@ public partial class MainWindow : Window
 		CharacterList.Tag = _settings.Columns;
 		UpdateCurrentCardWidths(force: true);
 	}
+
+	private void PreviewApiKey(string apiKey)
+	{
+		_settings.ApiKey = apiKey;
+	}
+
+	private void PreviewAutoRefreshOnStartup(bool autoRefreshOnStartup)
+	{
+		_settings.AutoRefreshOnStartup = autoRefreshOnStartup;
+	}
+
+	private void PreviewRunAtWindowsStartup(bool runAtWindowsStartup)
+	{
+		if (StartupRegistrationService.TryApply(runAtWindowsStartup, out var errorMessage))
+		{
+			_settings.RunAtWindowsStartup = runAtWindowsStartup;
+			return;
+		}
+
+		StatusText.Text = "자동 실행 설정 오류: " + errorMessage;
+	}
+
+	private void PreviewAutoRefreshInterval(int minutes)
+	{
+		_settings.AutoRefreshIntervalMinutes = ClampAutoRefreshInterval(minutes);
+		ApplyAutoRefreshInterval();
+	}
+
+	private void PreviewShowInTaskbar(bool showInTaskbar)
+	{
+		_settings.ShowInTaskbar = showInTaskbar;
+		ShowInTaskbar = showInTaskbar;
+	}
+
+	private void PreviewEnableUserDataCache(bool enableUserDataCache)
+	{
+		_settings.EnableUserDataCache = enableUserDataCache;
+	}
+
+	private void PreviewWeeklyContents(WeeklyContentSettings weeklyContents)
+	{
+		_settings.WeeklyContents = CloneWeeklyContentSettings(weeklyContents);
+		ApplyWeeklyContentSettingsToCurrentRows();
+	}
+
+	private static WeeklyContentSettings CloneWeeklyContentSettings(WeeklyContentSettings settings) => new()
+	{
+		ShowWeeklyEquipmentLoot = settings.ShowWeeklyEquipmentLoot,
+		ShowWeeklyOathLoot = settings.ShowWeeklyOathLoot,
+		ShowWeeklyCrystalLoot = settings.ShowWeeklyCrystalLoot,
+		ShowVenus = settings.ShowVenus,
+		ShowApocalypse = settings.ShowApocalypse,
+		ShowBakalRaid = settings.ShowBakalRaid,
+		ShowNabelRaid = settings.ShowNabelRaid,
+		ShowNormalNabelRaid = settings.ShowNormalNabelRaid,
+		ShowHardNabelRaid = settings.ShowHardNabelRaid,
+		ShowTwilightOfInae = settings.ShowTwilightOfInae,
+		ShowDiregieRaid = settings.ShowDiregieRaid,
+		ShowHardMistRaid = settings.ShowHardMistRaid
+	};
 
 	private void ApplyAutoRefreshInterval()
 	{
@@ -731,7 +849,7 @@ public partial class MainWindow : Window
 	{
 		_settings.FilterIncompleteOnly = !_settings.FilterIncompleteOnly;
 		RenderCharacterRows();
-		ApplyHeaderButtonLayout();
+		ApplyHeaderButtonLayout(force: true);
 		SaveSettings();
 		StatusText.Text = _settings.FilterIncompleteOnly
 			? LogText.IncompleteFilterOn
@@ -1091,14 +1209,23 @@ public partial class MainWindow : Window
 			? "M 2 6 L 8 12 L 14 6 M 2 1 L 14 1"
 			: "M 2 10 L 8 4 L 14 10 M 2 15 L 14 15");
 
-		ApplyHeaderButtonLayout();
+		ApplyHeaderButtonLayout(force: true);
 		UpdateCurrentCardWidths(force: true);
 	}
 
-	private void ApplyHeaderButtonLayout()
+	private void ApplyHeaderButtonLayout(bool force = false)
 	{
 		var isCompactMode = _settings.IsCompactMode;
 		var useCompactOptionButtons = isCompactMode || ActualWidth <= CompactHeaderWidthThreshold;
+		if (!force &&
+			_lastHeaderCompactMode == isCompactMode &&
+			_lastCompactOptionButtons == useCompactOptionButtons)
+		{
+			return;
+		}
+
+		_lastHeaderCompactMode = isCompactMode;
+		_lastCompactOptionButtons = useCompactOptionButtons;
 
 		RefreshNowButton.Width = isCompactMode ? 28 : 88;
 		RefreshNowButton.Height = isCompactMode ? 26 : 34;
@@ -1252,10 +1379,17 @@ public partial class MainWindow : Window
 
 	private async void Settings_Click(object sender, RoutedEventArgs e)
 	{
+		var originalApiKey = _settings.ApiKey;
+		var originalWeeklyContents = CloneWeeklyContentSettings(_settings.WeeklyContents);
 		var originalThemeMode = _settings.ThemeMode;
 		var originalLowPerformanceMode = _settings.LowPerformanceMode;
 		var originalCharacterImageMode = _settings.CharacterImageMode;
 		var originalColumns = _settings.Columns;
+		var originalAutoRefreshOnStartup = _settings.AutoRefreshOnStartup;
+		var originalRunAtWindowsStartup = _settings.RunAtWindowsStartup;
+		var originalAutoRefreshInterval = _settings.AutoRefreshIntervalMinutes;
+		var originalShowInTaskbar = _settings.ShowInTaskbar;
+		var originalEnableUserDataCache = _settings.EnableUserDataCache;
 		var settingsWindow = new SettingsWindow(
 			_settings.ApiKey,
 			_settings.WeeklyContents,
@@ -1264,6 +1398,7 @@ public partial class MainWindow : Window
 			_settings.CharacterImageMode,
 			_settings.Columns,
 			_settings.AutoRefreshOnStartup,
+			_settings.RunAtWindowsStartup,
 			_settings.AutoRefreshIntervalMinutes,
 			_settings.ShowInTaskbar,
 			_settings.EnableUserDataCache,
@@ -1272,6 +1407,13 @@ public partial class MainWindow : Window
 			PreviewLowPerformanceMode,
 			PreviewCharacterImageMode,
 			PreviewColumns,
+			PreviewApiKey,
+			PreviewAutoRefreshOnStartup,
+			PreviewRunAtWindowsStartup,
+			PreviewAutoRefreshInterval,
+			PreviewShowInTaskbar,
+			PreviewEnableUserDataCache,
+			PreviewWeeklyContents,
 			ResolveThemeIsLight)
 		{
 			Owner = this
@@ -1279,14 +1421,21 @@ public partial class MainWindow : Window
 
 		if (settingsWindow.ShowDialog() != true)
 		{
+			PreviewApiKey(originalApiKey);
+			PreviewWeeklyContents(originalWeeklyContents);
 			PreviewThemeMode(originalThemeMode);
 			PreviewLowPerformanceMode(originalLowPerformanceMode);
 			PreviewCharacterImageMode(originalCharacterImageMode);
 			PreviewColumns(originalColumns);
+			PreviewAutoRefreshOnStartup(originalAutoRefreshOnStartup);
+			PreviewRunAtWindowsStartup(originalRunAtWindowsStartup);
+			PreviewAutoRefreshInterval(originalAutoRefreshInterval);
+			PreviewShowInTaskbar(originalShowInTaskbar);
+			PreviewEnableUserDataCache(originalEnableUserDataCache);
 			return;
 		}
 
-		var shouldRefresh = !string.Equals(_settings.ApiKey, settingsWindow.ApiKey, StringComparison.Ordinal);
+		var shouldRefresh = !string.Equals(originalApiKey, settingsWindow.ApiKey, StringComparison.Ordinal);
 		_settings.ApiKey = settingsWindow.ApiKey;
 		_settings.WeeklyContents = settingsWindow.WeeklyContents;
 		_settings.ThemeMode = settingsWindow.ThemeMode;
@@ -1294,6 +1443,10 @@ public partial class MainWindow : Window
 		_settings.CharacterImageMode = CharacterRow.NormalizeImageMode(settingsWindow.CharacterImageMode);
 		_settings.Columns = settingsWindow.Columns;
 		_settings.AutoRefreshOnStartup = settingsWindow.AutoRefreshOnStartup;
+		if (StartupRegistrationService.TryApply(settingsWindow.RunAtWindowsStartup, out var startupError))
+			_settings.RunAtWindowsStartup = settingsWindow.RunAtWindowsStartup;
+		else
+			StatusText.Text = "자동 실행 설정 오류: " + startupError;
 		_settings.AutoRefreshIntervalMinutes = ClampAutoRefreshInterval(settingsWindow.AutoRefreshIntervalMinutes);
 		_settings.ShowInTaskbar = settingsWindow.ShowInTaskbarSetting;
 		_settings.EnableUserDataCache = settingsWindow.EnableUserDataCache;
@@ -2174,13 +2327,17 @@ public partial class MainWindow : Window
 		if (_settings is null)
 			return;
 
-		ApplyHeaderButtonLayout();
-		SaveWindowPlacement();
+		ScheduleHeaderLayoutUpdate();
+		if (!_isNativeSizeMove)
+			ScheduleWindowPlacementSave();
 	}
 
 	private void Window_LocationChanged(object? sender, EventArgs e)
 	{
-		SaveWindowPlacement();
+		if (_isNativeSizeMove)
+			return;
+
+		ScheduleWindowPlacementSave();
 	}
 
 	private void RestoreWindowPlacement()
@@ -2253,7 +2410,36 @@ public partial class MainWindow : Window
 
 	private void CharacterScrollViewer_SizeChanged(object sender, SizeChangedEventArgs e)
 	{
-		UpdateCurrentCardWidths(contentWidth: GetCardLayoutContentWidth(e.NewSize.Width));
+		ScheduleCardWidthUpdate(GetCardLayoutContentWidth(e.NewSize.Width));
+	}
+
+	private void ScheduleHeaderLayoutUpdate()
+	{
+		_resizeHeaderTimer.Stop();
+		_resizeHeaderTimer.Start();
+	}
+
+	private void ScheduleWindowPlacementSave()
+	{
+		_windowPlacementTimer.Stop();
+		_windowPlacementTimer.Start();
+	}
+
+	private void ScheduleCardWidthUpdate(double contentWidth)
+	{
+		_queuedCardLayoutWidth = contentWidth;
+		if (_isCardWidthUpdateQueued)
+			return;
+
+		_isCardWidthUpdateQueued = true;
+		Dispatcher.BeginInvoke(() =>
+		{
+			_isCardWidthUpdateQueued = false;
+			var queuedWidth = _queuedCardLayoutWidth;
+			_queuedCardLayoutWidth = null;
+			if (queuedWidth.HasValue)
+				UpdateCurrentCardWidths(contentWidth: queuedWidth.Value);
+		}, DispatcherPriority.Render);
 	}
 
 	private void CharacterCard_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -2337,8 +2523,7 @@ public partial class MainWindow : Window
 			: System.Windows.DragDropEffects.None;
 
 		if (e.Effects == System.Windows.DragDropEffects.Move &&
-			!_isOverDeleteZone &&
-			DeleteDropZone.Visibility != Visibility.Visible)
+			!_isOverDeleteZone)
 		{
 			ShowDropIndicator(e.GetPosition(CharacterList));
 		}
@@ -2877,8 +3062,7 @@ public partial class MainWindow : Window
 	private void UpdateDropIndicatorFromCursor()
 	{
 		if (_draggingRow is null ||
-			_isOverDeleteZone ||
-			DeleteDropZone.Visibility == Visibility.Visible)
+			_isOverDeleteZone)
 		{
 			return;
 		}
@@ -3244,7 +3428,6 @@ public partial class MainWindow : Window
 		if (revealProgress > 0)
 		{
 			ShowDeleteDropZone(Math.Pow(revealProgress, 1.2));
-			HideDropIndicator();
 		}
 		else
 		{

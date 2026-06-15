@@ -14,16 +14,17 @@ public class AppSettings
 	public string ApiKey { get; set; } = "";
 	public string ServerId { get; set; } = "cain";
 	public string ThemeMode { get; set; } = "system";
-	public string CharacterImageMode { get; set; } = "full";
+	public string CharacterImageMode { get; set; } = "compact";
 	public bool IsCompactMode { get; set; }
 	public bool FilterIncompleteOnly { get; set; }
 	public bool AutoSortByFame { get; set; }
 	public bool LowPerformanceMode { get; set; }
 	public bool AutoRefreshOnStartup { get; set; } = true;
+	public bool RunAtWindowsStartup { get; set; }
 	public int AutoRefreshIntervalMinutes { get; set; } = 30;
 	public bool ShowInTaskbar { get; set; }
 	public bool EnableUserDataCache { get; set; } = true;
-	public int Columns { get; set; } = 2;
+	public int Columns { get; set; } = 4;
 	public double? WindowLeft { get; set; }
 	public double? WindowTop { get; set; }
 	public double? WindowWidth { get; set; }

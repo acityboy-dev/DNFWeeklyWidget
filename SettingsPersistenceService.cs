@@ -99,6 +99,7 @@ internal sealed class SettingsPersistenceService
 			AutoSortByFame = _settings.AutoSortByFame,
 			LowPerformanceMode = _settings.LowPerformanceMode,
 			AutoRefreshOnStartup = _settings.AutoRefreshOnStartup,
+			RunAtWindowsStartup = _settings.RunAtWindowsStartup,
 			AutoRefreshIntervalMinutes = _settings.AutoRefreshIntervalMinutes,
 			ShowInTaskbar = _settings.ShowInTaskbar,
 			EnableUserDataCache = _settings.EnableUserDataCache,

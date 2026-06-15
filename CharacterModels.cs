@@ -180,11 +180,19 @@ public class CharacterRow : INotifyPropertyChanged
             if (Math.Abs(_cardWidth - value) < 0.5)
                 return;
 
+            var wasWideLayout = IsWideLayout;
+            var wasDetailedLootLayout = IsDetailedLootLayout;
             _cardWidth = value;
             OnPropertyChanged(nameof(CardWidth));
-            OnPropertyChanged(nameof(IsWideLayout));
-            OnPropertyChanged(nameof(IsDetailedLootLayout));
-            OnPropertyChanged(nameof(IsCompactLayout));
+
+            if (wasWideLayout != IsWideLayout)
+            {
+                OnPropertyChanged(nameof(IsWideLayout));
+                OnPropertyChanged(nameof(IsCompactLayout));
+            }
+
+            if (wasDetailedLootLayout != IsDetailedLootLayout)
+                OnPropertyChanged(nameof(IsDetailedLootLayout));
         }
     }
 
@@ -1084,9 +1092,9 @@ public class WeeklyContentSettings
 	public bool ShowWeeklyCrystalLoot { get; set; } = true;
 	public bool ShowVenus { get; set; } = false;
 	public bool ShowApocalypse { get; set; } = true;
-	public bool ShowBakalRaid { get; set; } = true;
+	public bool ShowBakalRaid { get; set; } = false;
 	public bool ShowNabelRaid { get; set; } = true;
-	public bool ShowNormalNabelRaid { get; set; } = true;
+	public bool ShowNormalNabelRaid { get; set; } = false;
 	public bool ShowHardNabelRaid { get; set; } = true;
 	public bool ShowTwilightOfInae { get; set; } = true;
 	public bool ShowDiregieRaid { get; set; } = true;

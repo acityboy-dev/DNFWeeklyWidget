@@ -180,11 +180,6 @@
 						<Grid x:Name="EdgeHitArea"
 							  Background="Transparent"
 							  ClipToBounds="False">
-							<Border x:Name="EdgeWash"
-									Width="24"
-									HorizontalAlignment="Left"
-									Background="{DynamicResource ButtonHoverBackgroundBrush}"
-									Opacity="0"/>
 							<Border x:Name="EdgeLine"
 									Width="1"
 									HorizontalAlignment="Left"
@@ -202,11 +197,7 @@
 						</Grid>
 						<ControlTemplate.Triggers>
 							<Trigger Property="IsMouseOver" Value="True">
-								<Setter TargetName="EdgeWash" Property="Opacity" Value="0.75"/>
 								<Setter TargetName="EdgeLine" Property="Opacity" Value="0.72"/>
-							</Trigger>
-							<Trigger Property="IsPressed" Value="True">
-								<Setter TargetName="EdgeWash" Property="Opacity" Value="1"/>
 							</Trigger>
 						</ControlTemplate.Triggers>
 					</ControlTemplate>
@@ -256,6 +247,7 @@
 
 		<Style x:Key="CharacterCardStyle" TargetType="Border">
 			<Setter Property="Background" Value="{DynamicResource CardBackgroundBrush}"/>
+			<Setter Property="ClipToBounds" Value="True"/>
 			<Setter Property="BorderBrush" Value="Transparent"/>
 			<Setter Property="BorderThickness" Value="0"/>
 			<Setter Property="CornerRadius" Value="14"/>
@@ -333,6 +325,36 @@
 				<RowDefinition Height="Auto"/>
 				<RowDefinition Height="Auto"/>
 			</Grid.RowDefinitions>
+
+			<Border Grid.RowSpan="5"
+					Width="36"
+					Margin="-22 -22 0 -22"
+					HorizontalAlignment="Left"
+					Background="{DynamicResource ButtonHoverBackgroundBrush}"
+					IsHitTestVisible="False"
+					Panel.ZIndex="19">
+				<Border.OpacityMask>
+					<LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+						<GradientStop Color="#FF000000" Offset="0"/>
+						<GradientStop Color="#B8000000" Offset="0.32"/>
+						<GradientStop Color="#48000000" Offset="0.68"/>
+						<GradientStop Color="#00000000" Offset="1"/>
+					</LinearGradientBrush>
+				</Border.OpacityMask>
+				<Border.Style>
+					<Style TargetType="Border">
+						<Setter Property="Opacity" Value="0"/>
+						<Style.Triggers>
+							<DataTrigger Binding="{Binding IsMouseOver, ElementName=PresetPanelButton}" Value="True">
+								<Setter Property="Opacity" Value="0.9"/>
+							</DataTrigger>
+							<DataTrigger Binding="{Binding IsPressed, ElementName=PresetPanelButton}" Value="True">
+								<Setter Property="Opacity" Value="1"/>
+							</DataTrigger>
+						</Style.Triggers>
+					</Style>
+				</Border.Style>
+			</Border>
 
 			<Button x:Name="PresetPanelButton"
 					Style="{StaticResource PresetEdgeButtonStyle}"
@@ -773,7 +795,8 @@
 										QueryContinueDrag="CharacterCard_QueryContinueDrag"
 										DragOver="CharacterCard_DragOver"
 										Drop="CharacterCard_Drop">
-									<Grid VerticalAlignment="Top">
+									<Grid VerticalAlignment="Top"
+										  ClipToBounds="True">
 										<Grid.Style>
 											<Style TargetType="Grid">
 												<Setter Property="Visibility" Value="Visible"/>
@@ -785,7 +808,7 @@
 											</Style>
 										</Grid.Style>
 
-										<StackPanel>
+										<StackPanel ClipToBounds="True">
 											<Border Height="150"
 													ClipToBounds="True"
 													Margin="0 -4 0 10"
@@ -853,7 +876,7 @@
 															   Foreground="{DynamicResource PrimaryTextBrush}"
 															   FontSize="16"
 															   FontWeight="Bold"
-															   TextWrapping="Wrap"
+															   TextWrapping="NoWrap"
 															   TextTrimming="CharacterEllipsis"/>
 													<TextBlock Text="{Binding ServerName}"
 															   Foreground="{DynamicResource SecondaryTextBrush}"
@@ -867,7 +890,7 @@
 													   Foreground="{DynamicResource PrimaryTextBrush}"
 													   FontSize="16"
 													   FontWeight="Bold"
-													   TextWrapping="Wrap"
+													   TextWrapping="NoWrap"
 													   TextTrimming="CharacterEllipsis"
 													   Visibility="{Binding ShowStandardHeader, Converter={StaticResource BoolToVisibilityConverter}}"/>
 
@@ -882,6 +905,7 @@
 																	Foreground="{DynamicResource PrimaryTextBrush}"
 																	FontSize="13"
 																	Height="19"
+																	HorizontalAlignment="Stretch"
 																	Margin="0 6 0 0"/>
 
 											<Border Height="1"
@@ -890,6 +914,7 @@
 													Margin="0 8 0 7"/>
 
 											<ItemsControl ItemsSource="{Binding SummaryLines}"
+														  ClipToBounds="True"
 														  Visibility="{Binding IsCompactLayout, Converter={StaticResource BoolToVisibilityConverter}}">
 												<ItemsControl.ItemTemplate>
 													<DataTemplate>

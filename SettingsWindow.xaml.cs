@@ -15,7 +15,7 @@ public partial class SettingsWindow : Window
 	private sealed class CharacterImageModeOption
 	{
 		public string Label { get; init; } = "";
-		public string Value { get; init; } = "full";
+		public string Value { get; init; } = "compact";
 	}
 
 	private readonly bool _isLightTheme;
@@ -23,6 +23,13 @@ public partial class SettingsWindow : Window
 	private readonly Action<bool>? _previewLowPerformanceMode;
 	private readonly Action<string>? _previewCharacterImageMode;
 	private readonly Action<int>? _previewColumns;
+	private readonly Action<string>? _previewApiKey;
+	private readonly Action<bool>? _previewAutoRefreshOnStartup;
+	private readonly Action<bool>? _previewRunAtWindowsStartup;
+	private readonly Action<int>? _previewAutoRefreshInterval;
+	private readonly Action<bool>? _previewShowInTaskbar;
+	private readonly Action<bool>? _previewEnableUserDataCache;
+	private readonly Action<WeeklyContentSettings>? _previewWeeklyContents;
 	private readonly Func<string, bool>? _resolveIsLightTheme;
 	private readonly ManualWindowDrag _windowDrag;
 	private bool _lowPerformanceMode;
@@ -37,6 +44,7 @@ public partial class SettingsWindow : Window
 		string characterImageMode,
 		int columns,
 		bool autoRefreshOnStartup,
+		bool runAtWindowsStartup,
 		int autoRefreshIntervalMinutes,
 		bool showInTaskbar,
 		bool enableUserDataCache,
@@ -45,6 +53,13 @@ public partial class SettingsWindow : Window
 		Action<bool>? previewLowPerformanceMode = null,
 		Action<string>? previewCharacterImageMode = null,
 		Action<int>? previewColumns = null,
+		Action<string>? previewApiKey = null,
+		Action<bool>? previewAutoRefreshOnStartup = null,
+		Action<bool>? previewRunAtWindowsStartup = null,
+		Action<int>? previewAutoRefreshInterval = null,
+		Action<bool>? previewShowInTaskbar = null,
+		Action<bool>? previewEnableUserDataCache = null,
+		Action<WeeklyContentSettings>? previewWeeklyContents = null,
 		Func<string, bool>? resolveIsLightTheme = null)
 	{
 		_isLightTheme = isLightTheme;
@@ -52,6 +67,13 @@ public partial class SettingsWindow : Window
 		_previewLowPerformanceMode = previewLowPerformanceMode;
 		_previewCharacterImageMode = previewCharacterImageMode;
 		_previewColumns = previewColumns;
+		_previewApiKey = previewApiKey;
+		_previewAutoRefreshOnStartup = previewAutoRefreshOnStartup;
+		_previewRunAtWindowsStartup = previewRunAtWindowsStartup;
+		_previewAutoRefreshInterval = previewAutoRefreshInterval;
+		_previewShowInTaskbar = previewShowInTaskbar;
+		_previewEnableUserDataCache = previewEnableUserDataCache;
+		_previewWeeklyContents = previewWeeklyContents;
 		_resolveIsLightTheme = resolveIsLightTheme;
 		InitializeComponent();
 		_windowDrag = new ManualWindowDrag(this);
@@ -75,13 +97,14 @@ public partial class SettingsWindow : Window
 		};
 		CharacterImageModeBox.SelectedValue = CharacterRow.NormalizeImageMode(characterImageMode);
 		if (CharacterImageModeBox.SelectedValue is null)
-			CharacterImageModeBox.SelectedValue = "full";
+			CharacterImageModeBox.SelectedValue = "compact";
 		CharacterImageModeBox.SelectionChanged += CharacterImageModeBox_SelectionChanged;
 
 		ApiKeyBox.Text = apiKey;
 		ColumnsBox.Text = ClampColumns(columns).ToString();
 		ColumnsSlider.Value = ClampColumns(columns);
 		AutoRefreshOnStartupBox.IsChecked = autoRefreshOnStartup;
+		RunAtWindowsStartupBox.IsChecked = runAtWindowsStartup;
 		AutoRefreshIntervalBox.Text = ClampAutoRefreshInterval(autoRefreshIntervalMinutes).ToString();
 		ShowInTaskbarBox.IsChecked = showInTaskbar;
 		EnableUserDataCacheBox.IsChecked = enableUserDataCache;
@@ -96,6 +119,22 @@ public partial class SettingsWindow : Window
 		TwilightOfInaeBox.IsChecked = weeklyContents.ShowTwilightOfInae;
 		DiregieRaidBox.IsChecked = weeklyContents.ShowDiregieRaid;
 		HardMistRaidBox.IsChecked = weeklyContents.ShowHardMistRaid;
+
+		ApiKeyBox.TextChanged += (_, _) => _previewApiKey?.Invoke(ApiKey);
+		AutoRefreshOnStartupBox.Checked += PreviewAutoRefreshOnStartup;
+		AutoRefreshOnStartupBox.Unchecked += PreviewAutoRefreshOnStartup;
+		RunAtWindowsStartupBox.Checked += PreviewRunAtWindowsStartup;
+		RunAtWindowsStartupBox.Unchecked += PreviewRunAtWindowsStartup;
+		ShowInTaskbarBox.Checked += PreviewShowInTaskbar;
+		ShowInTaskbarBox.Unchecked += PreviewShowInTaskbar;
+		EnableUserDataCacheBox.Checked += PreviewEnableUserDataCache;
+		EnableUserDataCacheBox.Unchecked += PreviewEnableUserDataCache;
+
+		foreach (var checkBox in GetWeeklyContentCheckBoxes())
+		{
+			checkBox.Checked += PreviewWeeklyContents;
+			checkBox.Unchecked += PreviewWeeklyContents;
+		}
 	}
 
 	protected override void OnSourceInitialized(EventArgs e)
@@ -107,11 +146,12 @@ public partial class SettingsWindow : Window
 	public string ApiKey => ApiKeyBox.Text.Trim();
 	public string ThemeMode => ThemeModeBox.SelectedValue as string ?? "system";
 	public bool LowPerformanceMode => LowPerformanceModeBox.IsChecked == true;
-	public string CharacterImageMode => CharacterImageModeBox.SelectedValue as string ?? "full";
+	public string CharacterImageMode => CharacterImageModeBox.SelectedValue as string ?? "compact";
 	public int Columns => int.TryParse(ColumnsBox.Text, out var columns)
 		? ClampColumns(columns)
-		: 1;
+		: 4;
 	public bool AutoRefreshOnStartup => AutoRefreshOnStartupBox.IsChecked == true;
+	public bool RunAtWindowsStartup => RunAtWindowsStartupBox.IsChecked == true;
 	public int AutoRefreshIntervalMinutes => int.TryParse(AutoRefreshIntervalBox.Text, out var minutes)
 		? ClampAutoRefreshInterval(minutes)
 		: 30;
@@ -221,7 +261,10 @@ public partial class SettingsWindow : Window
 
 		minutes = ClampAutoRefreshInterval(minutes);
 		if (AutoRefreshIntervalBox.Text == minutes.ToString())
+		{
+			_previewAutoRefreshInterval?.Invoke(minutes);
 			return;
+		}
 
 		_isUpdatingAutoRefreshInterval = true;
 		try
@@ -233,7 +276,49 @@ public partial class SettingsWindow : Window
 		{
 			_isUpdatingAutoRefreshInterval = false;
 		}
+
+		_previewAutoRefreshInterval?.Invoke(minutes);
 	}
+
+	private void PreviewAutoRefreshOnStartup(object sender, RoutedEventArgs e)
+	{
+		_previewAutoRefreshOnStartup?.Invoke(AutoRefreshOnStartup);
+	}
+
+	private void PreviewRunAtWindowsStartup(object sender, RoutedEventArgs e)
+	{
+		_previewRunAtWindowsStartup?.Invoke(RunAtWindowsStartup);
+	}
+
+	private void PreviewShowInTaskbar(object sender, RoutedEventArgs e)
+	{
+		_previewShowInTaskbar?.Invoke(ShowInTaskbarSetting);
+	}
+
+	private void PreviewEnableUserDataCache(object sender, RoutedEventArgs e)
+	{
+		_previewEnableUserDataCache?.Invoke(EnableUserDataCache);
+	}
+
+	private void PreviewWeeklyContents(object sender, RoutedEventArgs e)
+	{
+		_previewWeeklyContents?.Invoke(WeeklyContents);
+	}
+
+	private System.Windows.Controls.CheckBox[] GetWeeklyContentCheckBoxes() =>
+	[
+		WeeklyEquipmentLootBox,
+		WeeklyOathLootBox,
+		WeeklyCrystalLootBox,
+		VenusBox,
+		ApocalypseBox,
+		BakalRaidBox,
+		HardMistRaidBox,
+		NormalNabelRaidBox,
+		HardNabelRaidBox,
+		TwilightOfInaeBox,
+		DiregieRaidBox
+	];
 
 	private static int ClampColumns(int columns)
 	{
