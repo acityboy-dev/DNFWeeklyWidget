@@ -38,7 +38,6 @@ internal static class Program
 					return 0;
 			}
 
-			File.WriteAllText(options.AcceptedFilePath, "accepted");
 			var application = new Application { ShutdownMode = ShutdownMode.OnMainWindowClose };
 			application.Run(new ProgressWindow(options));
 			return 0;
@@ -92,7 +91,11 @@ internal static class Program
 				VerticalAlignment = VerticalAlignment.Center,
 				Children = { _statusText, _progressBar }
 			};
-			Loaded += async (_, _) => await RunUpdateAsync();
+			Loaded += async (_, _) =>
+			{
+				File.WriteAllText(_options.AcceptedFilePath, "accepted");
+				await RunUpdateAsync();
+			};
 		}
 
 		private async Task RunUpdateAsync()
