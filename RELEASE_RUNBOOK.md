@@ -120,6 +120,8 @@ https://github.com/acityboy-dev/DNFWeeklyWidget.Release/releases/download/v0.1.4
 
 Release는 현재 개발 단계에서는 prerelease로 생성한다. Asset 업로드가 완료되고 실제 파일 크기와 URL이 확인되기 전에는 `update.json`을 변경하지 않는다.
 
+PowerShell에서 GitHub API로 한글 Release 설명을 보낼 때는 JSON 문자열을 `[Text.Encoding]::UTF8.GetBytes(...)`로 변환하고 Content-Type을 `application/json; charset=utf-8`로 지정한다. 문자열을 `-Body`에 바로 전달하면 한글이 `?`로 깨질 수 있다.
+
 중요: ZIP을 `DNFWeeklyWidget.Release`의 Git 커밋에 추가하지 않는다. 과거처럼 `raw.githubusercontent.com` URL을 사용하지 않는다.
 
 ## 6. update.json 갱신
@@ -168,4 +170,3 @@ git push origin main
 - 작성자 이메일이 잘못된 커밋은 그대로 두지 않는다. 해당 커밋과 연결된 태그를 올바른 작성자로 재작성하고 `--force-with-lease`로 교체한다.
 - 사용자가 만든 관련 없는 변경은 되돌리지 않는다.
 - Debug 빌드에서는 자동 업데이트가 비활성화되어 있으므로 실제 업데이트 테스트는 이전 버전의 Release 빌드로 수행한다.
-
