@@ -76,6 +76,11 @@ public partial class SettingsWindow : Window
 		_previewWeeklyContents = previewWeeklyContents;
 		_resolveIsLightTheme = resolveIsLightTheme;
 		InitializeComponent();
+		var informationalVersion = System.Reflection.CustomAttributeExtensions
+			.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(
+				System.Reflection.Assembly.GetExecutingAssembly())?
+			.InformationalVersion;
+		AppVersionText.Text = $"v{informationalVersion?.Split('+', 2)[0] ?? "0.0.0"}";
 		_windowDrag = new ManualWindowDrag(this);
 		_lowPerformanceMode = lowPerformanceMode;
 		ThemeModeBox.ItemsSource = new List<ThemeModeOption>

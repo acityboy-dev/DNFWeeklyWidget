@@ -2666,7 +2666,15 @@ public partial class MainWindow : Window
 	private void ConfigureTrayIcon()
 	{
 		_trayIcon.Text = "DNF Weekly Widget";
-		_trayIcon.Icon = new System.Drawing.Icon(Path.Combine(AppContext.BaseDirectory, "Assets", "Icons", "TrayColorIcon.ico"));
+		using (var iconStream = typeof(MainWindow).Assembly.GetManifestResourceStream(
+			"DNFWeeklyWidget.Assets.Icons.TrayColorIcon.ico"))
+		{
+			if (iconStream is not null)
+			{
+				using var icon = new System.Drawing.Icon(iconStream);
+				_trayIcon.Icon = (System.Drawing.Icon)icon.Clone();
+			}
+		}
 		_trayContextMenu = CreateTrayContextMenu();
 		_trayIcon.ContextMenuStrip = _trayContextMenu;
 		_trayIcon.Visible = true;

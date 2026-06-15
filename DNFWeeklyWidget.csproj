@@ -6,9 +6,24 @@
 		<UseWPF>true</UseWPF>
 		<UseWindowsForms>true</UseWindowsForms>
 		<ApplicationIcon>Assets\Icons\AppIcon.ico</ApplicationIcon>
+		<Version>0.1.1</Version>
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
 	</PropertyGroup>
+
+	<PropertyGroup Condition="'$(Configuration)' == 'Release'">
+		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
+		<SelfContained>true</SelfContained>
+		<PublishSingleFile>true</PublishSingleFile>
+		<DebugType>none</DebugType>
+		<DebugSymbols>false</DebugSymbols>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Compile Remove="Updater\**\*.cs"/>
+		<EmbeddedResource Remove="Updater\**\*"/>
+		<None Remove="Updater\**\*"/>
+	</ItemGroup>
 
 	<ItemGroup>
 		<None Update="Assets\Icons\AppIcon.ico">
@@ -20,9 +35,9 @@
 		<None Update="Assets\Icons\TrayIconDark.ico">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
-		<None Update="Assets\Icons\TrayColorIcon.ico">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</None>
+		<None Remove="Assets\Icons\TrayColorIcon.ico"/>
+		<EmbeddedResource Include="Assets\Icons\TrayColorIcon.ico"
+						  LogicalName="DNFWeeklyWidget.Assets.Icons.TrayColorIcon.ico"/>
 	</ItemGroup>
 
 </Project>

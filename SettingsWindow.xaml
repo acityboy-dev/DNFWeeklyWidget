@@ -372,6 +372,14 @@
 				</Border>
 			</StackPanel>
 
+			<TextBlock x:Name="AppVersionText"
+					   Grid.Row="3"
+					   Foreground="{DynamicResource TertiaryTextBrush}"
+					   FontSize="10"
+					   Opacity="0.45"
+					   VerticalAlignment="Center"
+					   HorizontalAlignment="Left"/>
+
 			<StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right">
 				<Button Content="취소" Width="78" Height="32" Margin="0 0 8 0" IsCancel="True"/>
 				<Button Content="저장" Width="78" Height="32" IsDefault="True" Click="Save_Click"/>
