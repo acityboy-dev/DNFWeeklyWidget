@@ -327,7 +327,7 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
             horizontalPadding, 78, contentWidth, 18, window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kProgressControl)), nullptr, nullptr);
         const int fontHeight = -MulDiv(12, GetDpiForWindow(window), 72);
         g_statusFont = CreateFontW(fontHeight, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-            OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
+            OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"굴림");
         if (g_statusFont) SendMessageW(g_status, WM_SETFONT, reinterpret_cast<WPARAM>(g_statusFont), TRUE);
         SendMessageW(g_progress, PBM_SETRANGE, 0, MAKELPARAM(0, 100));
         return 0;
