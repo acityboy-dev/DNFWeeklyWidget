@@ -181,7 +181,7 @@
 							  Background="Transparent"
 							  ClipToBounds="False">
 							<Border x:Name="EdgeWash"
-									Width="14"
+									Width="24"
 									HorizontalAlignment="Left"
 									Background="{DynamicResource ButtonHoverBackgroundBrush}"
 									Opacity="0"/>
@@ -191,8 +191,8 @@
 									Background="{DynamicResource InputBorderBrush}"
 									Opacity="0.28"/>
 							<Border x:Name="ArrowSpot"
-									Width="16"
-									Height="42"
+									Width="28"
+									Height="48"
 									HorizontalAlignment="Left"
 									VerticalAlignment="Center"
 									Background="Transparent">
@@ -337,7 +337,7 @@
 			<Button x:Name="PresetPanelButton"
 					Style="{StaticResource PresetEdgeButtonStyle}"
 					Grid.RowSpan="5"
-					Width="18"
+					Width="28"
 					Padding="0"
 					HorizontalAlignment="Left"
 					VerticalAlignment="Stretch"
