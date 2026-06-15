@@ -10,7 +10,9 @@ public partial class App : System.Windows.Application
 		ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
 #if !DEBUG
-		if (await ApplicationUpdateService.TryStartUpdateAsync())
+		var startupSettings = AppSettings.Load();
+		if (startupSettings.CheckForUpdatesOnStartup &&
+			await ApplicationUpdateService.TryStartAvailableUpdateAsync(skipConfirmation: false))
 		{
 			Shutdown();
 			return;

@@ -2,6 +2,7 @@
 	<PropertyGroup>
 		<OutputType>WinExe</OutputType>
 		<TargetFramework>net8.0-windows</TargetFramework>
+		<UseWPF>true</UseWPF>
 		<AssemblyName>update</AssemblyName>
 		<RootNamespace>DNFWeeklyWidget.Updater</RootNamespace>
 		<Nullable>enable</Nullable>

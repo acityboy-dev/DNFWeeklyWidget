@@ -35,6 +35,7 @@ public partial class SettingsWindow : Window
 	private bool _lowPerformanceMode;
 	private bool _isUpdatingColumns;
 	private bool _isUpdatingAutoRefreshInterval;
+	private ApplicationUpdateService.UpdateInfo? _availableUpdate;
 
 	public SettingsWindow(
 		string apiKey,
@@ -44,6 +45,7 @@ public partial class SettingsWindow : Window
 		string characterImageMode,
 		int columns,
 		bool autoRefreshOnStartup,
+		bool checkForUpdatesOnStartup,
 		bool runAtWindowsStartup,
 		int autoRefreshIntervalMinutes,
 		bool showInTaskbar,
@@ -113,6 +115,7 @@ public partial class SettingsWindow : Window
 		ColumnsBox.Text = ClampColumns(columns).ToString();
 		ColumnsSlider.Value = ClampColumns(columns);
 		AutoRefreshOnStartupBox.IsChecked = autoRefreshOnStartup;
+		CheckForUpdatesOnStartupBox.IsChecked = checkForUpdatesOnStartup;
 		RunAtWindowsStartupBox.IsChecked = runAtWindowsStartup;
 		AutoRefreshIntervalBox.Text = ClampAutoRefreshInterval(autoRefreshIntervalMinutes).ToString();
 		ShowInTaskbarBox.IsChecked = showInTaskbar;
@@ -144,6 +147,8 @@ public partial class SettingsWindow : Window
 			checkBox.Checked += PreviewWeeklyContents;
 			checkBox.Unchecked += PreviewWeeklyContents;
 		}
+
+		Loaded += async (_, _) => await RefreshLatestVersionAsync();
 	}
 
 	protected override void OnSourceInitialized(EventArgs e)
@@ -160,6 +165,7 @@ public partial class SettingsWindow : Window
 		? ClampColumns(columns)
 		: 4;
 	public bool AutoRefreshOnStartup => AutoRefreshOnStartupBox.IsChecked == true;
+	public bool CheckForUpdatesOnStartup => CheckForUpdatesOnStartupBox.IsChecked == true;
 	public bool RunAtWindowsStartup => RunAtWindowsStartupBox.IsChecked == true;
 	public int AutoRefreshIntervalMinutes => int.TryParse(AutoRefreshIntervalBox.Text, out var minutes)
 		? ClampAutoRefreshInterval(minutes)
@@ -186,6 +192,40 @@ public partial class SettingsWindow : Window
 	private void Save_Click(object sender, RoutedEventArgs e)
 	{
 		DialogResult = true;
+	}
+
+	private async Task RefreshLatestVersionAsync()
+	{
+		_availableUpdate = await ApplicationUpdateService.CheckForUpdateAsync();
+		if (_availableUpdate is null)
+		{
+			LatestVersionText.Text = "최신 버전을 확인할 수 없습니다.";
+			UpdateNowButton.IsEnabled = false;
+			return;
+		}
+
+		LatestVersionText.Text = _availableUpdate.IsUpdateAvailable
+			? $"최신 버전: v{_availableUpdate.LatestVersion.ToString(3)}"
+			: $"최신 버전 사용 중: v{_availableUpdate.LatestVersion.ToString(3)}";
+		UpdateNowButton.IsEnabled = _availableUpdate.IsUpdateAvailable;
+	}
+
+	private async void UpdateNowButton_Click(object sender, RoutedEventArgs e)
+	{
+		if (_availableUpdate is null)
+			return;
+
+		UpdateNowButton.IsEnabled = false;
+		LatestVersionText.Text = "업데이터를 실행하고 있습니다...";
+		if (await ApplicationUpdateService.TryStartUpdateAsync(_availableUpdate, skipConfirmation: true))
+		{
+			DialogResult = false;
+			System.Windows.Application.Current.Shutdown();
+			return;
+		}
+
+		LatestVersionText.Text = "업데이터를 실행하지 못했습니다.";
+		UpdateNowButton.IsEnabled = true;
 	}
 
 	private void Cancel_Click(object sender, RoutedEventArgs e)

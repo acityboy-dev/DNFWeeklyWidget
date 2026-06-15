@@ -20,6 +20,7 @@ public class AppSettings
 	public bool AutoSortByFame { get; set; }
 	public bool LowPerformanceMode { get; set; }
 	public bool AutoRefreshOnStartup { get; set; } = true;
+	public bool CheckForUpdatesOnStartup { get; set; } = true;
 	public bool RunAtWindowsStartup { get; set; }
 	public int AutoRefreshIntervalMinutes { get; set; } = 30;
 	public bool ShowInTaskbar { get; set; }

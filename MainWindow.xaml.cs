@@ -1398,6 +1398,7 @@ public partial class MainWindow : Window
 			_settings.CharacterImageMode,
 			_settings.Columns,
 			_settings.AutoRefreshOnStartup,
+			_settings.CheckForUpdatesOnStartup,
 			_settings.RunAtWindowsStartup,
 			_settings.AutoRefreshIntervalMinutes,
 			_settings.ShowInTaskbar,
@@ -1443,6 +1444,7 @@ public partial class MainWindow : Window
 		_settings.CharacterImageMode = CharacterRow.NormalizeImageMode(settingsWindow.CharacterImageMode);
 		_settings.Columns = settingsWindow.Columns;
 		_settings.AutoRefreshOnStartup = settingsWindow.AutoRefreshOnStartup;
+		_settings.CheckForUpdatesOnStartup = settingsWindow.CheckForUpdatesOnStartup;
 		if (StartupRegistrationService.TryApply(settingsWindow.RunAtWindowsStartup, out var startupError))
 			_settings.RunAtWindowsStartup = settingsWindow.RunAtWindowsStartup;
 		else

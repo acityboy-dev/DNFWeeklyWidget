@@ -140,7 +140,34 @@
 									   FontSize="12"
 									   FontWeight="SemiBold"
 									   Margin="0 0 0 7"/>
-							<TextBox x:Name="ApiKeyBox" Height="34" FontSize="15" Margin="0 0 0 22"/>
+							<TextBox x:Name="ApiKeyBox" Height="34" FontSize="15" Margin="0 0 0 18"/>
+
+							<TextBlock Text="앱 업데이트"
+									   Foreground="{DynamicResource SecondaryTextBrush}"
+									   FontSize="12"
+									   FontWeight="SemiBold"
+									   Margin="0 0 0 10"/>
+							<CheckBox x:Name="CheckForUpdatesOnStartupBox"
+									  Content="실행 시 업데이트 확인"
+									  Margin="0 0 0 10"/>
+							<Grid Margin="22 0 0 18">
+								<Grid.ColumnDefinitions>
+									<ColumnDefinition Width="*"/>
+									<ColumnDefinition Width="Auto"/>
+								</Grid.ColumnDefinitions>
+								<TextBlock x:Name="LatestVersionText"
+										   Text="최신 버전 확인 중..."
+										   Foreground="{DynamicResource TertiaryTextBrush}"
+										   FontSize="11"
+										   VerticalAlignment="Center"/>
+								<Button x:Name="UpdateNowButton"
+										Grid.Column="1"
+										Content="업데이트"
+										Height="28"
+										MinWidth="72"
+										IsEnabled="False"
+										Click="UpdateNowButton_Click"/>
+							</Grid>
 
 							<TextBlock Text="갱신 및 데이터"
 									   Foreground="{DynamicResource SecondaryTextBrush}"

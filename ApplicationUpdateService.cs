@@ -1,9 +1,7 @@
 using System.Diagnostics;
 using System.IO;
-using System.IO.Compression;
 using System.Net.Http;
 using System.Reflection;
-using System.Security.Cryptography;
 using System.Text.Json;
 
 namespace DNFWeeklyWidget;
@@ -13,16 +11,12 @@ internal static class ApplicationUpdateService
 	private const string ManifestUrl =
 		"https://raw.githubusercontent.com/acityboy-dev/DNFWeeklyWidget.Release/main/update.json";
 	private const string UpdaterFileName = "update.exe";
-	private static readonly HttpClient HttpClient = new()
-	{
-		Timeout = TimeSpan.FromSeconds(15)
-	};
+	private static readonly HttpClient HttpClient = new() { Timeout = TimeSpan.FromSeconds(15) };
 
-	public static async Task<bool> TryStartUpdateAsync()
+	public static string CurrentVersionText => GetCurrentVersion().ToString(3);
+
+	public static async Task<UpdateInfo?> CheckForUpdateAsync()
 	{
-#if DEBUG
-		return false;
-#else
 		try
 		{
 			HttpClient.DefaultRequestHeaders.UserAgent.ParseAdd("DNFWeeklyWidget-Updater");
@@ -34,15 +28,42 @@ internal static class ApplicationUpdateService
 			});
 			if (manifest is null ||
 				!TryParseVersion(manifest.Version, out var remoteVersion) ||
-				remoteVersion <= GetCurrentVersion())
+				string.IsNullOrWhiteSpace(manifest.PackageUrl) ||
+				string.IsNullOrWhiteSpace(manifest.Sha256) ||
+				string.IsNullOrWhiteSpace(manifest.Executable))
 			{
-				return false;
+				return null;
 			}
 
-			var executablePath = Environment.ProcessPath;
-			if (string.IsNullOrWhiteSpace(executablePath))
-				return false;
+			return new UpdateInfo(
+				GetCurrentVersion(),
+				remoteVersion,
+				new Uri(manifestUri, manifest.PackageUrl),
+				manifest.Sha256.Trim(),
+				manifest.Executable);
+		}
+		catch
+		{
+			return null;
+		}
+	}
 
+	public static async Task<bool> TryStartAvailableUpdateAsync(bool skipConfirmation)
+	{
+#if DEBUG
+		return false;
+#else
+		var update = await CheckForUpdateAsync();
+		return update is not null && update.IsUpdateAvailable &&
+			await TryStartUpdateAsync(update, skipConfirmation);
+#endif
+	}
+
+	public static async Task<bool> TryStartUpdateAsync(UpdateInfo update, bool skipConfirmation)
+	{
+		try
+		{
+			var executablePath = Environment.ProcessPath;
 			var installDirectory = Path.GetDirectoryName(executablePath);
 			if (string.IsNullOrWhiteSpace(installDirectory))
 				return false;
@@ -51,98 +72,57 @@ internal static class ApplicationUpdateService
 			if (!File.Exists(installedUpdaterPath))
 				return false;
 
-			var packageUri = new Uri(manifestUri, manifest.PackageUrl);
 			var updateDirectory = Path.Combine(Path.GetTempPath(), "DNFWeeklyWidget", Guid.NewGuid().ToString("N"));
 			Directory.CreateDirectory(updateDirectory);
-			var packagePath = Path.Combine(updateDirectory, "update.zip");
 			var temporaryUpdaterPath = Path.Combine(updateDirectory, UpdaterFileName);
-
-			await DownloadFileAsync(packageUri, packagePath);
-			if (!HasExpectedSha256(packagePath, manifest.Sha256))
-			{
-				Directory.Delete(updateDirectory, recursive: true);
-				return false;
-			}
-
-			if (!PackageContainsExecutable(packagePath, manifest.Executable))
-			{
-				Directory.Delete(updateDirectory, recursive: true);
-				return false;
-			}
-
+			var acceptedPath = Path.Combine(updateDirectory, "accepted.flag");
 			File.Copy(installedUpdaterPath, temporaryUpdaterPath, overwrite: true);
-			var process = Process.Start(new ProcessStartInfo
+
+			var startInfo = new ProcessStartInfo
 			{
 				FileName = temporaryUpdaterPath,
 				UseShellExecute = false,
-				CreateNoWindow = true,
-				WorkingDirectory = updateDirectory,
-				ArgumentList =
-				{
-					"--pid", Environment.ProcessId.ToString(),
-					"--install-dir", installDirectory,
-					"--package", packagePath,
-					"--executable", manifest.Executable
-				}
-			});
+				WorkingDirectory = updateDirectory
+			};
+			startInfo.ArgumentList.Add("--pid");
+			startInfo.ArgumentList.Add(Environment.ProcessId.ToString());
+			startInfo.ArgumentList.Add("--install-dir");
+			startInfo.ArgumentList.Add(installDirectory);
+			startInfo.ArgumentList.Add("--package-url");
+			startInfo.ArgumentList.Add(update.PackageUri.AbsoluteUri);
+			startInfo.ArgumentList.Add("--sha256");
+			startInfo.ArgumentList.Add(update.Sha256);
+			startInfo.ArgumentList.Add("--executable");
+			startInfo.ArgumentList.Add(update.Executable);
+			startInfo.ArgumentList.Add("--current-version");
+			startInfo.ArgumentList.Add(update.CurrentVersion.ToString(3));
+			startInfo.ArgumentList.Add("--latest-version");
+			startInfo.ArgumentList.Add(update.LatestVersion.ToString(3));
+			startInfo.ArgumentList.Add("--accepted-file");
+			startInfo.ArgumentList.Add(acceptedPath);
+			if (skipConfirmation)
+				startInfo.ArgumentList.Add("--skip-confirmation");
 
-			return process is not null;
+			using var process = Process.Start(startInfo);
+			if (process is null)
+				return false;
+
+			if (skipConfirmation)
+				return true;
+
+			while (!process.HasExited)
+			{
+				if (File.Exists(acceptedPath))
+					return true;
+				await Task.Delay(100);
+			}
+
+			return File.Exists(acceptedPath);
 		}
-		catch (HttpRequestException)
+		catch
 		{
 			return false;
 		}
-		catch (TaskCanceledException)
-		{
-			return false;
-		}
-		catch (IOException)
-		{
-			return false;
-		}
-		catch (UnauthorizedAccessException)
-		{
-			return false;
-		}
-		catch (JsonException)
-		{
-			return false;
-		}
-		catch (Exception)
-		{
-			// Update failures must never prevent the application from starting.
-			return false;
-		}
-#endif
-	}
-
-	private static async Task DownloadFileAsync(Uri uri, string destinationPath)
-	{
-		using var response = await HttpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead);
-		response.EnsureSuccessStatusCode();
-		await using var source = await response.Content.ReadAsStreamAsync();
-		await using var destination = File.Create(destinationPath);
-		await source.CopyToAsync(destination);
-	}
-
-	private static bool HasExpectedSha256(string path, string expectedHash)
-	{
-		if (string.IsNullOrWhiteSpace(expectedHash))
-			return false;
-
-		using var stream = File.OpenRead(path);
-		var actualHash = Convert.ToHexString(SHA256.HashData(stream));
-		return string.Equals(actualHash, expectedHash.Trim(), StringComparison.OrdinalIgnoreCase);
-	}
-
-	private static bool PackageContainsExecutable(string packagePath, string executable)
-	{
-		if (string.IsNullOrWhiteSpace(executable))
-			return false;
-
-		using var archive = ZipFile.OpenRead(packagePath);
-		return archive.Entries.Any(entry =>
-			string.Equals(entry.FullName.Replace('\\', '/'), executable.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase));
 	}
 
 	private static Version GetCurrentVersion()
@@ -157,6 +137,16 @@ internal static class ApplicationUpdateService
 	{
 		var normalized = value?.Split('+', 2)[0].Split('-', 2)[0];
 		return Version.TryParse(normalized, out version!);
+	}
+
+	internal sealed record UpdateInfo(
+		Version CurrentVersion,
+		Version LatestVersion,
+		Uri PackageUri,
+		string Sha256,
+		string Executable)
+	{
+		public bool IsUpdateAvailable => LatestVersion > CurrentVersion;
 	}
 
 	private sealed class UpdateManifest
