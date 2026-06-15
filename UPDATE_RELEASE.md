@@ -2,7 +2,7 @@
 
 자동 업데이트는 Release 빌드에서만 동작한다. Visual Studio Debug 빌드에서는 업데이트 확인, 다운로드, `update.exe` 실행이 모두 비활성화된다.
 
-메인 앱과 업데이터는 모두 self-contained 단일 파일 옵션으로 publish하며, 네이티브 DLL과 콘텐츠 파일은 필요에 따라 별도 파일로 생성된다. 모든 결과물은 `artifacts/release` 폴더 하나에 합쳐진다. ZIP과 `update.json`은 자동 생성하지 않는다.
+메인 앱은 .NET self-contained 단일 파일로 publish한다. 업데이터는 C++ Win32 정적 링크 단일 실행 파일로 빌드하므로 .NET 런타임이나 별도 DLL이 필요 없다. 모든 결과물은 `artifacts/release` 폴더 하나에 합쳐진다. ZIP과 `update.json`은 자동 생성하지 않는다.
 
 ## Release 저장소
 
@@ -15,7 +15,7 @@
 ```json
 {
   "version": "1.0.1",
-  "packageUrl": "https://github.com/acityboy-dev/DNFWeeklyWidget.Release/releases/download/v1.0.1/DNFWeeklyWidget-1.0.1-win-x64.zip",
+  "packageUrl": "https://github.com/acityboy-dev/DNFWeeklyWidget.Release/releases/download/v1.0.0/DNFWeeklyWidget-1.0.0-win-x64.zip",
   "sha256": "ZIP_SHA256",
   "executable": "DNFWeeklyWidget.exe"
 }
@@ -26,7 +26,7 @@
 저장소 루트에서 실행한다.
 
 ```powershell
-.\scripts\Publish-Release.ps1 -Version 1.0.1
+.\scripts\Publish-Release.ps1 -Version 1.0.0
 ```
 
 생성 위치: `artifacts/release`
@@ -43,7 +43,7 @@
 2. 새 버전이면 임시 복사한 `update.exe`가 현재/최신 버전을 표시하고 업데이트 여부를 묻는다.
 3. 사용자가 동의하면 앱이 종료되고 업데이터가 진행률 창을 표시한다.
 4. 업데이터가 ZIP을 다운로드하고 SHA-256 및 실행 파일을 검증한다.
-5. ZIP을 안전한 임시 경로에 해제하고 설치 폴더 파일을 교체한다.
+5. ZIP 항목을 설치 대상 파일 옆의 `.update-new` 임시 파일로 직접 풀고 교체한다. 별도 staging 폴더는 만들지 않는다.
 6. 교체 완료 후 `DNFWeeklyWidget.exe`를 다시 실행한다.
 
 설정창은 자동 확인 옵션과 관계없이 최신 버전을 표시한다. 새 버전이 있으면 `업데이트` 버튼으로 확인 대화상자 없이 바로 업데이트할 수 있다.

@@ -77,13 +77,6 @@ internal static class ApplicationUpdateService
 			var temporaryUpdaterPath = Path.Combine(updateDirectory, UpdaterFileName);
 			var acceptedPath = Path.Combine(updateDirectory, "accepted.flag");
 			File.Copy(installedUpdaterPath, temporaryUpdaterPath, overwrite: true);
-			foreach (var dependencyPath in Directory.EnumerateFiles(installDirectory, "*.dll", SearchOption.TopDirectoryOnly))
-			{
-				File.Copy(
-					dependencyPath,
-					Path.Combine(updateDirectory, Path.GetFileName(dependencyPath)),
-					overwrite: true);
-			}
 
 			var startInfo = new ProcessStartInfo
 			{
@@ -113,9 +106,6 @@ internal static class ApplicationUpdateService
 			using var process = Process.Start(startInfo);
 			if (process is null)
 				return false;
-
-			if (skipConfirmation)
-				return true;
 
 			while (!process.HasExited)
 			{

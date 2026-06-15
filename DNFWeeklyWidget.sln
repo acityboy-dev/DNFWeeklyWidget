@@ -5,7 +5,7 @@ VisualStudioVersion = 17.12.35707.178 d17.12
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DNFWeeklyWidget", "DNFWeeklyWidget.csproj", "{64CCA6C5-0DE3-41F3-82FC-248AF58C0F45}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Updater", "Updater\Updater.csproj", "{CC49E414-6971-4709-86B9-F41F86B7DF8C}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Updater", "Updater\Updater.vcxproj", "{CC49E414-6971-4709-86B9-F41F86B7DF8C}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -17,10 +17,10 @@ Global
 		{64CCA6C5-0DE3-41F3-82FC-248AF58C0F45}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{64CCA6C5-0DE3-41F3-82FC-248AF58C0F45}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{64CCA6C5-0DE3-41F3-82FC-248AF58C0F45}.Release|Any CPU.Build.0 = Release|Any CPU
-		{CC49E414-6971-4709-86B9-F41F86B7DF8C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{CC49E414-6971-4709-86B9-F41F86B7DF8C}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{CC49E414-6971-4709-86B9-F41F86B7DF8C}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{CC49E414-6971-4709-86B9-F41F86B7DF8C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CC49E414-6971-4709-86B9-F41F86B7DF8C}.Debug|Any CPU.ActiveCfg = Debug|x64
+		{CC49E414-6971-4709-86B9-F41F86B7DF8C}.Debug|Any CPU.Build.0 = Debug|x64
+		{CC49E414-6971-4709-86B9-F41F86B7DF8C}.Release|Any CPU.ActiveCfg = Release|x64
+		{CC49E414-6971-4709-86B9-F41F86B7DF8C}.Release|Any CPU.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

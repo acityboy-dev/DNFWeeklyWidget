@@ -29,16 +29,29 @@ if ($LASTEXITCODE -ne 0) {
 	throw "DNFWeeklyWidget publish failed with exit code $LASTEXITCODE."
 }
 
-dotnet publish (Join-Path $repoRoot "Updater\Updater.csproj") `
-	-c $Configuration `
-	-r $Runtime `
-	--self-contained true `
-	-p:PublishSingleFile=true `
-	-p:DebugSymbols=false `
-	-o $artifactsRoot
+$vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+if (-not (Test-Path $vswhere)) {
+	throw "Visual Studio Installer의 vswhere.exe를 찾을 수 없습니다."
+}
+
+$msbuild = & $vswhere -latest -requires Microsoft.Component.MSBuild -find "MSBuild\**\Bin\MSBuild.exe" |
+	Select-Object -First 1
+if (-not $msbuild) {
+	throw "C++ 업데이터를 빌드할 MSBuild를 찾을 수 없습니다."
+}
+
+$updaterIntermediate = Join-Path $repoRoot "artifacts\obj\updater"
+$updaterProjectExtensions = Join-Path $repoRoot "artifacts\obj\updater-extensions"
+& $msbuild (Join-Path $repoRoot "Updater\Updater.vcxproj") `
+	/t:Build `
+	/p:Configuration=$Configuration `
+	/p:Platform=x64 `
+	/p:OutDir="$artifactsRoot\" `
+	/p:IntDir="$updaterIntermediate\" `
+	/p:MSBuildProjectExtensionsPath="$updaterProjectExtensions\"
 
 if ($LASTEXITCODE -ne 0) {
-	throw "Updater publish failed with exit code $LASTEXITCODE."
+	throw "Native updater build failed with exit code $LASTEXITCODE."
 }
 
 Write-Host "Release output: $artifactsRoot"

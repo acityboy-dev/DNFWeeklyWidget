@@ -198,5 +198,6 @@ DNF Weekly Widget은 던전앤파이터 여러 캐릭터의 주간 콘텐츠 진
 - Release 빌드만 시작 시 `DNFWeeklyWidget.Release` 저장소의 `update.json`을 확인한다.
 - Visual Studio Debug 빌드는 컴파일 조건으로 자동 업데이트를 완전히 비활성화한다.
 - 패키지는 SHA-256 검증 후 다운로드하며, 임시 위치의 독립 `update.exe`가 앱 종료 후 파일을 교체하고 재실행한다.
+- `update.exe`는 .NET이 아닌 C++ Win32 정적 링크 단일 앱이다. ZIP을 별도 staging 폴더에 풀지 않고 설치 대상 옆의 `.update-new` 파일로 직접 추출한 뒤 교체한다.
 - 배포 계약과 절차는 `UPDATE_RELEASE.md` 및 `scripts/Publish-Release.ps1`을 따른다.
 - 0.1.3부터 메인 앱은 업데이트 매니페스트만 확인하며, 다운로드·검증·교체 진행률 UI는 `update.exe`가 담당한다. 시작 시 자동 확인은 설정에서 끌 수 있고 설정창의 수동 업데이트는 확인창을 생략한다.
