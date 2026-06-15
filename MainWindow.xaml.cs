@@ -1659,10 +1659,10 @@ public partial class MainWindow : Window
 		var remainingText = remaining.TotalMinutes < 1
 			? "곧 초기화"
 			: remaining.Days > 0
-				? $"{remaining.Days}일 {remaining.Hours}시간 {remaining.Minutes}분 후"
+				? $"{remaining.Days}일 {remaining.Hours}시간 {remaining.Minutes}분 남음"
 				: remaining.Hours > 0
-					? $"{remaining.Hours}시간 {remaining.Minutes}분 후"
-					: $"{Math.Max(1, remaining.Minutes)}분 후";
+					? $"{remaining.Hours}시간 {remaining.Minutes}분 남음"
+					: $"{Math.Max(1, remaining.Minutes)}분 남음";
 
 		var maintenanceStatus = _isWeeklyResetNoticeApplied || _isWeeklyResetDebugOverride
 			? "점검 반영"

@@ -1186,7 +1186,7 @@ public class WeeklyContentDefinition
 		new()
 		{
 			Id = DiregieId,
-			Name = "디레지에 레이드",
+			Name = "디레지에",
 			RequiredFame = 63257,
 			IsEnabled = settings => settings.ShowDiregieRaid,
 			IsClearedBy = row => row.IsWeeklyClearCode() && row.ContainsAny("디레지에", "diregie")
