@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO.Compression;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 
 namespace DNFWeeklyWidget.Updater;
@@ -10,6 +11,12 @@ internal static class Program
 
 	private static int Main(string[] args)
 	{
+		if (!UpdateOptions.HasRequiredArguments(args))
+		{
+			ShowStandaloneWarning();
+			return 0;
+		}
+
 		try
 		{
 			var options = UpdateOptions.Parse(args);
@@ -46,6 +53,18 @@ internal static class Program
 			return 1;
 		}
 	}
+
+	private static void ShowStandaloneWarning()
+	{
+		MessageBox(
+			IntPtr.Zero,
+			"업데이트 프로그램은 단독으로 실행할 수 없습니다.",
+			"DNFWeeklyWidget 업데이트",
+			0x00000040);
+	}
+
+	[DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "MessageBoxW")]
+	private static extern int MessageBox(IntPtr windowHandle, string text, string caption, uint type);
 
 	private static void WaitForProcessExit(int processId)
 	{
@@ -238,6 +257,12 @@ internal static class Program
 		public string InstallDirectory { get; init; } = "";
 		public string PackagePath { get; init; } = "";
 		public string Executable { get; init; } = "";
+
+		public static bool HasRequiredArguments(string[] args) =>
+			!string.IsNullOrWhiteSpace(TryGetValue(args, "--pid")) &&
+			!string.IsNullOrWhiteSpace(TryGetValue(args, "--install-dir")) &&
+			!string.IsNullOrWhiteSpace(TryGetValue(args, "--package")) &&
+			!string.IsNullOrWhiteSpace(TryGetValue(args, "--executable"));
 
 		public static UpdateOptions Parse(string[] args)
 		{

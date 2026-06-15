@@ -80,7 +80,11 @@ public partial class SettingsWindow : Window
 			.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(
 				System.Reflection.Assembly.GetExecutingAssembly())?
 			.InformationalVersion;
-		AppVersionText.Text = $"v{informationalVersion?.Split('+', 2)[0] ?? "0.0.0"}";
+		var assemblyVersion = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+		var displayVersion = string.IsNullOrWhiteSpace(informationalVersion)
+			? assemblyVersion?.ToString(3) ?? "0.0.0"
+			: informationalVersion.Split('+', 2)[0];
+		AppVersionText.Text = $"v{displayVersion}";
 		_windowDrag = new ManualWindowDrag(this);
 		_lowPerformanceMode = lowPerformanceMode;
 		ThemeModeBox.ItemsSource = new List<ThemeModeOption>
