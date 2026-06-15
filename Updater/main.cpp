@@ -302,7 +302,7 @@ DWORD WINAPI UpdateWorker(void*) {
         if (packageFiles.find(g_options.executable.wstring()) == packageFiles.end()) throw std::runtime_error("Application executable is missing from the update package");
         PostStatus(L"새 버전을 설치하고 있습니다..."); ReplacePendingFiles(pending); DeleteObsoleteFiles(g_options.installDirectory, packageFiles);
         WriteManagedFiles(g_options.installDirectory / kManagedFilesName, packageFiles); DeleteFileW(packagePath.c_str());
-        PostStatus(L"업데이트가 완료되었습니다. 앱을 다시 실행합니다...");
+        PostStatus(L"업데이트 완료");
         const fs::path executable = DestinationPath(g_options.installDirectory, g_options.executable.wstring());
         ShellExecuteW(nullptr, L"open", executable.c_str(), nullptr, g_options.installDirectory.c_str(), SW_SHOWNORMAL);
         PostMessageW(g_window, kDoneMessage, 0, 0);
@@ -325,7 +325,7 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
             horizontalPadding, 30, contentWidth, 28, window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kStatusControl)), nullptr, nullptr);
         g_progress = CreateWindowExW(0, PROGRESS_CLASSW, nullptr, WS_CHILD | WS_VISIBLE,
             horizontalPadding, 78, contentWidth, 18, window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kProgressControl)), nullptr, nullptr);
-        const int fontHeight = -MulDiv(12, GetDpiForWindow(window), 72);
+        const int fontHeight = -MulDiv(9, GetDpiForWindow(window), 72);
         g_statusFont = CreateFontW(fontHeight, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
             OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"굴림");
         if (g_statusFont) SendMessageW(g_status, WM_SETFONT, reinterpret_cast<WPARAM>(g_statusFont), TRUE);
