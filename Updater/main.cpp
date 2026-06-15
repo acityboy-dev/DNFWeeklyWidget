@@ -321,9 +321,15 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
         SendMessageW(g_progress, PBM_SETRANGE, 0, MAKELPARAM(0, 100)); return 0;
     case WM_CTLCOLORSTATIC:
         SetTextColor(reinterpret_cast<HDC>(wParam), RGB(230, 232, 238));
-        SetBkMode(reinterpret_cast<HDC>(wParam), TRANSPARENT);
-        return reinterpret_cast<LRESULT>(GetStockObject(NULL_BRUSH));
-    case kStatusMessage: { std::unique_ptr<std::wstring> text(reinterpret_cast<std::wstring*>(lParam)); SetWindowTextW(g_status, text->c_str()); return 0; }
+        SetBkColor(reinterpret_cast<HDC>(wParam), RGB(35, 37, 43));
+        SetBkMode(reinterpret_cast<HDC>(wParam), OPAQUE);
+        return GetClassLongPtrW(window, GCLP_HBRBACKGROUND);
+    case kStatusMessage: {
+        std::unique_ptr<std::wstring> text(reinterpret_cast<std::wstring*>(lParam));
+        SetWindowTextW(g_status, text->c_str());
+        RedrawWindow(g_status, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW);
+        return 0;
+    }
     case kProgressMessage: SendMessageW(g_progress, PBM_SETPOS, wParam, 0); return 0;
     case kErrorMessage: { std::unique_ptr<std::wstring> text(reinterpret_cast<std::wstring*>(lParam)); MessageBoxW(window, (L"업데이트에 실패했습니다.\n\n" + *text).c_str(), kWindowTitle, MB_OK | MB_ICONERROR); g_allowClose = true; DestroyWindow(window); return 0; }
     case kDoneMessage: g_allowClose = true; DestroyWindow(window); return 0;
