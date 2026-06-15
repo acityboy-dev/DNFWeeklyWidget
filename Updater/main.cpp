@@ -60,6 +60,7 @@ struct ExtractContext { HANDLE file{INVALID_HANDLE_VALUE}; };
 HWND g_window{};
 HWND g_status{};
 HWND g_progress{};
+HFONT g_statusFont{};
 Options g_options;
 bool g_allowClose{};
 
@@ -315,10 +316,22 @@ DWORD WINAPI UpdateWorker(void*) {
 
 LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message) {
-    case WM_CREATE:
-        g_status = CreateWindowW(L"STATIC", L"업데이트를 준비하고 있습니다...", WS_CHILD | WS_VISIBLE, 26, 32, 378, 24, window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kStatusControl)), nullptr, nullptr);
-        g_progress = CreateWindowExW(0, PROGRESS_CLASSW, nullptr, WS_CHILD | WS_VISIBLE, 26, 78, 378, 18, window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kProgressControl)), nullptr, nullptr);
-        SendMessageW(g_progress, PBM_SETRANGE, 0, MAKELPARAM(0, 100)); return 0;
+    case WM_CREATE: {
+        constexpr int horizontalPadding = 26;
+        RECT client{};
+        GetClientRect(window, &client);
+        const int contentWidth = (std::max)(1L, client.right - client.left - horizontalPadding * 2);
+        g_status = CreateWindowW(L"STATIC", L"업데이트를 준비하고 있습니다...", WS_CHILD | WS_VISIBLE,
+            horizontalPadding, 30, contentWidth, 28, window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kStatusControl)), nullptr, nullptr);
+        g_progress = CreateWindowExW(0, PROGRESS_CLASSW, nullptr, WS_CHILD | WS_VISIBLE,
+            horizontalPadding, 78, contentWidth, 18, window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kProgressControl)), nullptr, nullptr);
+        const int fontHeight = -MulDiv(12, GetDpiForWindow(window), 72);
+        g_statusFont = CreateFontW(fontHeight, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+            OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
+        if (g_statusFont) SendMessageW(g_status, WM_SETFONT, reinterpret_cast<WPARAM>(g_statusFont), TRUE);
+        SendMessageW(g_progress, PBM_SETRANGE, 0, MAKELPARAM(0, 100));
+        return 0;
+    }
     case WM_CTLCOLORSTATIC:
         SetTextColor(reinterpret_cast<HDC>(wParam), RGB(230, 232, 238));
         SetBkColor(reinterpret_cast<HDC>(wParam), RGB(35, 37, 43));
@@ -334,7 +347,10 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
     case kErrorMessage: { std::unique_ptr<std::wstring> text(reinterpret_cast<std::wstring*>(lParam)); MessageBoxW(window, (L"업데이트에 실패했습니다.\n\n" + *text).c_str(), kWindowTitle, MB_OK | MB_ICONERROR); g_allowClose = true; DestroyWindow(window); return 0; }
     case kDoneMessage: g_allowClose = true; DestroyWindow(window); return 0;
     case WM_CLOSE: if (g_allowClose) DestroyWindow(window); return 0;
-    case WM_DESTROY: PostQuitMessage(0); return 0;
+    case WM_DESTROY:
+        if (g_statusFont) { DeleteObject(g_statusFont); g_statusFont = nullptr; }
+        PostQuitMessage(0);
+        return 0;
     default: return DefWindowProcW(window, message, wParam, lParam);
     }
 }
