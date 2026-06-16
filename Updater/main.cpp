@@ -373,7 +373,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
     std::vector<std::wstring> args;
     for (int i = 0; i < count; ++i) args.emplace_back(rawArgs[i]);
     LocalFree(rawArgs);
-    if (!ParseOptions(args, g_options)) { MessageBoxW(nullptr, L"업데이트 프로그램은 단독으로 실행할 수 없습니다.", kWindowTitle, MB_OK | MB_ICONINFORMATION); return 0; }
+    if (!ParseOptions(args, g_options)) { MessageBoxW(nullptr, L"단독으로 실행할 수 없습니다.", kWindowTitle, MB_OK | MB_ICONINFORMATION); return 0; }
     if (!g_options.skipConfirmation) {
         const std::wstring message = L"새로운 버전이 발견되었습니다.\n\n현재 버전: " + g_options.currentVersion + L"\n최신 버전: " + g_options.latestVersion + L"\n\n업데이트를 진행할까요?";
         if (MessageBoxW(nullptr, message.c_str(), kWindowTitle, MB_YESNO | MB_ICONINFORMATION) != IDYES) return 0;

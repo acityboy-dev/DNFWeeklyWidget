@@ -407,7 +407,7 @@
 								<ColumnDefinition Width="6"/>
 								<ColumnDefinition Width="28"/>
 							</Grid.ColumnDefinitions>
-							<TextBlock Text="카드엔트리 프리셋"
+							<TextBlock Text="프리셋"
 									   Foreground="{DynamicResource PrimaryTextBrush}"
 									   FontSize="13"
 									   FontWeight="SemiBold"

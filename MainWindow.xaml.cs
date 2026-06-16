@@ -209,12 +209,6 @@ public partial class MainWindow : Window
 
 		if (_settings.AutoRefreshOnStartup)
 			Loaded += async (_, _) => await RefreshAsync();
-
-        Loaded += (_, _) =>
-        {
-            System.Windows.MessageBox.Show(
-				$"Render Tier: {RenderCapability.Tier >> 16}");
-        };
     }
 
 	private void CharacterScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e)
