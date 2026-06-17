@@ -137,7 +137,6 @@ public partial class MainWindow : Window
 	private DateTime _weeklyResetDate;
 	private bool _isWeeklyResetNoticeApplied;
 	private bool _isWeeklyResetNoticeRefreshing;
-	private bool _isWeeklyResetDebugOverride;
 	private bool _isUpdatingPresetList;
 	private bool _suppressNextPresetPanelClick;
 	private bool _isMutatingPresets;
@@ -1649,7 +1648,6 @@ public partial class MainWindow : Window
 			expectedResetDate = GetUpcomingThursday(now.AddDays(1));
 			_weeklyResetAt = null;
 			_isWeeklyResetNoticeApplied = false;
-			_isWeeklyResetDebugOverride = false;
 			_weeklyResetNoticeTimer.Start();
 			nextReset = expectedResetDate.AddHours(6);
 		}
@@ -1664,7 +1662,7 @@ public partial class MainWindow : Window
 					? $"{remaining.Hours}시간 {remaining.Minutes}분 남음"
 					: $"{Math.Max(1, remaining.Minutes)}분 남음";
 
-		var maintenanceStatus = _isWeeklyResetNoticeApplied || _isWeeklyResetDebugOverride
+		var maintenanceStatus = _isWeeklyResetNoticeApplied
 			? "점검 반영"
 			: "점검 미반영";
 		WeeklyResetText.Text = $"주간 초기화 ({maintenanceStatus}) · {remainingText} · {nextReset:M/d(ddd) HH:mm}";
@@ -1672,7 +1670,7 @@ public partial class MainWindow : Window
 
 	private async Task RefreshWeeklyResetNoticeAsync()
 	{
-		if (_isWeeklyResetNoticeApplied || _isWeeklyResetDebugOverride || _isWeeklyResetNoticeRefreshing)
+		if (_isWeeklyResetNoticeApplied || _isWeeklyResetNoticeRefreshing)
 			return;
 
 		var now = DateTime.Now;
@@ -1697,37 +1695,6 @@ public partial class MainWindow : Window
 		{
 			_isWeeklyResetNoticeRefreshing = false;
 		}
-	}
-
-	private async Task ApplyPreviousMaintenanceTimeAsync(int weeksAgo)
-	{
-		var upcomingThursday = _weeklyResetDate;
-		var previousMaintenanceDate = upcomingThursday.AddDays(-7 * weeksAgo);
-		var maintenanceStart = await _weeklyResetNoticeService.GetMaintenanceStartAsync(previousMaintenanceDate);
-		if (maintenanceStart is null)
-		{
-			StatusText.Text = $"{weeksAgo}주 전 정기점검 시간을 불러오지 못했습니다.";
-			return;
-		}
-
-		_weeklyResetAt = upcomingThursday.Add(maintenanceStart.Value.TimeOfDay);
-		_isWeeklyResetNoticeApplied = false;
-		_isWeeklyResetDebugOverride = true;
-		_weeklyResetNoticeTimer.Stop();
-		UpdateWeeklyResetText();
-		StatusText.Text = $"디버그: {weeksAgo}주 전 점검 시작 시각 {maintenanceStart.Value:HH:mm}을 강제 적용했습니다.";
-	}
-
-	private async Task ClearMaintenanceTimeOverrideAsync()
-	{
-		_weeklyResetAt = null;
-		_isWeeklyResetNoticeApplied = false;
-		_isWeeklyResetDebugOverride = false;
-		_weeklyResetNoticeTimer.Start();
-		UpdateWeeklyResetText();
-		StatusText.Text = "디버그 점검시간 강제 적용을 해제했습니다.";
-
-		await RefreshWeeklyResetNoticeAsync();
 	}
 
 	private static DateTime GetUpcomingThursday(DateTime now)
@@ -2700,14 +2667,6 @@ public partial class MainWindow : Window
 		themeMenu.DropDownItems.Add(_darkThemeMenuItem);
 		menu.Items.Add(themeMenu);
 
-		var weeklyResetDebugMenu = new Forms.ToolStripMenuItem("점검시간 강제 적용 (디버그)");
-		weeklyResetDebugMenu.DropDownItems.Add(CreateTrayAsyncMenuItem("1주 전 점검시간", () => ApplyPreviousMaintenanceTimeAsync(1)));
-		weeklyResetDebugMenu.DropDownItems.Add(CreateTrayAsyncMenuItem("2주 전 점검시간", () => ApplyPreviousMaintenanceTimeAsync(2)));
-		weeklyResetDebugMenu.DropDownItems.Add(CreateTrayAsyncMenuItem("3주 전 점검시간", () => ApplyPreviousMaintenanceTimeAsync(3)));
-		weeklyResetDebugMenu.DropDownItems.Add(new Forms.ToolStripSeparator());
-		weeklyResetDebugMenu.DropDownItems.Add(CreateTrayAsyncMenuItem("강제 적용 해제", ClearMaintenanceTimeOverrideAsync));
-		menu.Items.Add(weeklyResetDebugMenu);
-
 		menu.Items.Add(new Forms.ToolStripSeparator());
 		menu.Items.Add(CreateTrayMenuItem("\uC885\uB8CC", ExitApplication));
 		return menu;
@@ -2720,17 +2679,6 @@ public partial class MainWindow : Window
 		{
 			CloseTrayContextMenu();
 			Dispatcher.Invoke(action);
-		};
-		return item;
-	}
-
-	private Forms.ToolStripMenuItem CreateTrayAsyncMenuItem(string header, Func<Task> action)
-	{
-		var item = new Forms.ToolStripMenuItem(header);
-		item.Click += async (_, _) =>
-		{
-			CloseTrayContextMenu();
-			await action();
 		};
 		return item;
 	}
