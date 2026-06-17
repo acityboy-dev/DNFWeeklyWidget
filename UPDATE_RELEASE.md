@@ -12,6 +12,8 @@
 
 저장소 `main` 브랜치 루트에는 최신 버전의 `update.json`을 둔다. 실제 ZIP은 같은 저장소의 GitHub Release 자산으로 업로드한다.
 
+`DNFWeeklyWidget.Release/main`은 보호 브랜치이며 force push와 branch deletion을 허용하지 않는다. 개인 계정 저장소에서는 특정 사용자 push 제한을 branch protection으로 걸 수 없으므로, 직접 collaborator를 늘리지 않아 `acityboy-dev`만 쓰기 권한을 갖게 한다.
+
 ```json
 {
   "version": "1.0.1",
@@ -31,11 +33,20 @@
 
 생성 위치: `artifacts/release`
 
+SmartScreen 대응 릴리즈는 코드 서명 인증서로 `exe`와 `dll`을 서명한 뒤 ZIP을 만들어야 한다. 인증서가 준비된 환경에서는 다음처럼 실행한다.
+
+```powershell
+.\scripts\Publish-Release.ps1 -Version 1.0.0 -SigningCertificateThumbprint "CERT_THUMBPRINT" -RequireSigning
+```
+
+PFX 파일은 `-SigningCertificatePath`를 사용하고, 비밀번호는 기본적으로 `DNFWEEKLYWIDGET_SIGN_PASSWORD` 환경 변수에서 읽는다. 코드 서명 인증서가 없으면 SmartScreen 경고를 코드 차원에서 제거할 수 없다.
+
 배포 순서:
 
 1. `artifacts/release` 폴더의 파일을 직접 ZIP으로 압축한다.
 2. ZIP의 SHA-256을 계산해 `update.json`을 작성한다.
-3. `DNFWeeklyWidget.Release` 저장소에 Release와 `update.json`을 반영한다.
+3. `DNFWeeklyWidget.Release` 저장소에 Release Asset을 업로드한다.
+4. `update.json`을 배포 저장소 `main`에 반영한다.
 
 ## 업데이트 흐름
 

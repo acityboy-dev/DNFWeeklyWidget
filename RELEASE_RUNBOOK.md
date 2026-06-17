@@ -1,4 +1,4 @@
-# Codex 릴리즈 런북
+## Codex 릴리즈 런북
 
 이 문서는 사용자가 새 버전 빌드와 릴리즈 배포를 요청했을 때 다른 Codex 세션이 그대로 따라갈 작업 절차다.
 
@@ -6,8 +6,10 @@
 
 - 소스: `https://github.com/acityboy-dev/DNFWeeklyWidget`
 - 배포: `https://github.com/acityboy-dev/DNFWeeklyWidget.Release`
-- 배포 저장소 `main`: `update.json`만 관리
+- 배포 저장소 `main`: `update.json`과 사용자용 README 관리
 - 바이너리 ZIP: Git 커밋이 아니라 GitHub Release Asset으로 업로드
+- 배포 저장소 `main`은 보호 브랜치다. force push와 branch deletion을 허용하지 않는다.
+- 배포 저장소는 개인 계정 저장소라 특정 사용자 push 제한을 branch protection으로 걸 수 없다. 직접 collaborator를 늘리지 않아 `acityboy-dev`만 쓰기 권한을 갖게 한다.
 
 모든 새 커밋의 작성자와 커미터는 다음 값이어야 한다.
 
@@ -54,6 +56,23 @@ dotnet build DNFWeeklyWidget.sln -c Debug
 ```
 
 또는 루트의 `publish-release.bat 1.0.0`을 사용할 수 있다. 버전 인자를 생략하면 프로젝트의 `<Version>`을 읽는다.
+
+SmartScreen 대응 릴리즈는 Authenticode 코드 서명이 필요하다. 코드 서명 인증서가 없으면 SmartScreen 경고를 즉시 제거할 수 없고, 서명 후에도 일반 OV 인증서는 평판이 누적될 때까지 경고가 남을 수 있다. EV 코드 서명 인증서는 초기 평판 측면에서 더 유리하다.
+
+인증서가 현재 사용자 인증서 저장소에 있으면 thumbprint로 서명한다.
+
+```powershell
+.\scripts\Publish-Release.ps1 -Version 1.0.0 -SigningCertificateThumbprint "CERT_THUMBPRINT" -RequireSigning
+```
+
+PFX 파일을 쓰는 경우 비밀번호는 환경 변수에 넣고 실행한다.
+
+```powershell
+$env:DNFWEEKLYWIDGET_SIGN_PASSWORD = "PFX_PASSWORD"
+.\scripts\Publish-Release.ps1 -Version 1.0.0 -SigningCertificatePath "C:\secure\codesign.pfx" -RequireSigning
+```
+
+스크립트는 ZIP 생성 전에 `artifacts/release`의 `exe`와 `dll`을 SHA-256 + RFC3161 timestamp로 서명한다. `-RequireSigning`을 지정하면 인증서 누락이나 서명 실패 시 릴리즈 빌드를 실패시킨다.
 
 산출물은 `artifacts/release`에 생성된다. 최소한 다음 파일을 확인한다.
 
@@ -160,6 +179,9 @@ git push origin main
 7. 배포 저장소 `main`에는 ZIP이 없고 `update.json`만 갱신됨
 8. 배포 저장소 최신 커밋 작성자가 올바름
 9. 두 로컬 작업 트리가 clean 상태임
+10. 배포 저장소 `main` 보호 규칙이 유지됨
+11. 배포 저장소 직접 collaborator가 불필요하게 추가되지 않음
+12. SmartScreen 대응 릴리즈라면 `DNFWeeklyWidget.exe`와 `update.exe`가 유효한 Authenticode 서명을 포함함
 
 원격 `update.json`도 직접 읽어 최종 내용을 확인한다.
 
@@ -167,6 +189,7 @@ git push origin main
 
 - Release Asset 업로드가 실패하면 `update.json`을 갱신하지 않는다.
 - 잘못된 ZIP이나 해시를 배포했다면 먼저 올바른 Asset을 준비한 뒤 매니페스트를 갱신한다.
+- 배포 저장소 `main` 보호 규칙을 우회하거나 해제하지 않는다. 긴급 수정도 `acityboy-dev` 계정으로만 처리한다.
 - 작성자 이메일이 잘못된 커밋은 그대로 두지 않는다. 해당 커밋과 연결된 태그를 올바른 작성자로 재작성하고 `--force-with-lease`로 교체한다.
 - 사용자가 만든 관련 없는 변경은 되돌리지 않는다.
 - Debug 빌드에서는 자동 업데이트가 비활성화되어 있으므로 실제 업데이트 테스트는 이전 버전의 Release 빌드로 수행한다.
