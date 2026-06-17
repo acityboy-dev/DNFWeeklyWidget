@@ -92,9 +92,11 @@ $updateInfo = [ordered]@{
 	executable = "DNFWeeklyWidget.exe"
 }
 
-$updateInfo |
-	ConvertTo-Json -Depth 5 |
-	Set-Content -LiteralPath $updateJsonPath -Encoding UTF8
+$updateJson = $updateInfo | ConvertTo-Json -Depth 5
+[System.IO.File]::WriteAllText(
+	$updateJsonPath,
+	$updateJson + [Environment]::NewLine,
+	[System.Text.UTF8Encoding]::new($false))
 
 Write-Host ""
 Write-Host "Release output:"
