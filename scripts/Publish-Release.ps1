@@ -3,10 +3,80 @@ param(
 	[string]$Version,
 
 	[string]$Configuration = "Release",
-	[string]$Runtime = "win-x64"
+	[string]$Runtime = "win-x64",
+
+	[string]$SigningCertificateThumbprint,
+	[string]$SigningCertificatePath,
+	[string]$SigningCertificatePasswordEnv = "DNFWEEKLYWIDGET_SIGN_PASSWORD",
+	[string]$TimestampUrl = "http://timestamp.digicert.com",
+	[switch]$RequireSigning
 )
 
 $ErrorActionPreference = "Stop"
+
+function Find-SignTool {
+	$kitRoots = @(
+		"${env:ProgramFiles(x86)}\Windows Kits\10\bin",
+		"${env:ProgramFiles}\Windows Kits\10\bin"
+	)
+
+	foreach ($kitRoot in $kitRoots) {
+		if (-not (Test-Path $kitRoot)) {
+			continue
+		}
+
+		$signTool = Get-ChildItem -LiteralPath $kitRoot -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
+			Where-Object { $_.FullName -like "*\x64\signtool.exe" } |
+			Sort-Object FullName -Descending |
+			Select-Object -First 1
+
+		if ($signTool) {
+			return $signTool.FullName
+		}
+	}
+
+	return $null
+}
+
+function Invoke-CodeSigning {
+	param(
+		[Parameter(Mandatory = $true)]
+		[string]$TargetPath
+	)
+
+	$signTool = Find-SignTool
+	if (-not $signTool) {
+		throw "signtool.exe를 찾을 수 없습니다. Windows SDK를 설치하거나 PATH를 확인하세요."
+	}
+
+	$arguments = @(
+		"sign",
+		"/fd", "SHA256",
+		"/tr", $TimestampUrl,
+		"/td", "SHA256"
+	)
+
+	if ($SigningCertificateThumbprint) {
+		$arguments += @("/sha1", $SigningCertificateThumbprint)
+	}
+	elseif ($SigningCertificatePath) {
+		$arguments += @("/f", $SigningCertificatePath)
+		$password = [Environment]::GetEnvironmentVariable($SigningCertificatePasswordEnv)
+		if ($password) {
+			$arguments += @("/p", $password)
+		}
+	}
+	else {
+		throw "서명 인증서가 지정되지 않았습니다. -SigningCertificateThumbprint 또는 -SigningCertificatePath를 사용하세요."
+	}
+
+	$arguments += $TargetPath
+
+	& $signTool @arguments
+	if ($LASTEXITCODE -ne 0) {
+		throw "Code signing failed for $TargetPath with exit code $LASTEXITCODE."
+	}
+}
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $artifactsRoot = Join-Path $repoRoot "artifacts\release"
@@ -61,6 +131,27 @@ $updaterProjectExtensions = Join-Path $repoRoot "artifacts\obj\updater-extension
 
 if ($LASTEXITCODE -ne 0) {
 	throw "Native updater build failed with exit code $LASTEXITCODE."
+}
+
+$signingRequested = [bool]$SigningCertificateThumbprint -or [bool]$SigningCertificatePath
+if ($RequireSigning -and -not $signingRequested) {
+	throw "-RequireSigning이 지정됐지만 서명 인증서가 지정되지 않았습니다."
+}
+
+if ($signingRequested) {
+	$signingTargets = Get-ChildItem -LiteralPath $artifactsRoot -File |
+		Where-Object { $_.Extension -in @(".exe", ".dll") }
+
+	foreach ($target in $signingTargets) {
+		Write-Host "Signing: $($target.FullName)"
+		Invoke-CodeSigning -TargetPath $target.FullName
+	}
+}
+elseif ($RequireSigning) {
+	throw "서명이 필수로 설정됐지만 서명 대상이 구성되지 않았습니다."
+}
+else {
+	Write-Host "Code signing skipped. Provide -SigningCertificateThumbprint or -SigningCertificatePath to sign release binaries."
 }
 
 # 기존 zip 삭제
