@@ -75,6 +75,64 @@ internal sealed class PresetService
 		SyncActiveAliases();
 	}
 
+	public int AppendCurrentCharacters(IEnumerable<SavedCharacter> characters)
+	{
+		var existingCharacters = CurrentPreset.Characters
+			.Select(CreateCharacterKey)
+			.ToHashSet(StringComparer.OrdinalIgnoreCase);
+		var addedCount = 0;
+
+		foreach (var character in characters)
+		{
+			if (string.IsNullOrWhiteSpace(character.ServerId) ||
+				string.IsNullOrWhiteSpace(character.CharacterName) ||
+				!existingCharacters.Add(CreateCharacterKey(character)))
+			{
+				continue;
+			}
+
+			CurrentPreset.Characters.Add(new SavedCharacter
+			{
+				ServerId = character.ServerId.Trim(),
+				CharacterName = character.CharacterName.Trim()
+			});
+			addedCount++;
+		}
+
+		SyncActiveAliases();
+		return addedCount;
+	}
+
+	public int RemoveCurrentCharacters(IEnumerable<SavedCharacter> characters)
+	{
+		var charactersToRemove = characters
+			.Where(character =>
+				!string.IsNullOrWhiteSpace(character.ServerId) &&
+				!string.IsNullOrWhiteSpace(character.CharacterName))
+			.Select(CreateCharacterKey)
+			.ToHashSet(StringComparer.OrdinalIgnoreCase);
+		if (charactersToRemove.Count == 0)
+			return 0;
+
+		var removedCount = CurrentPreset.Characters.RemoveAll(character =>
+			charactersToRemove.Contains(CreateCharacterKey(character)));
+		CurrentPreset.CachedCards.RemoveAll(card =>
+			charactersToRemove.Contains(CreateCharacterKey(card.ServerId, card.CharacterName)));
+
+		if (_rowCollections.TryGetValue(CurrentPreset.Id, out var rows))
+		{
+			for (var index = rows.Count - 1; index >= 0; index--)
+			{
+				var row = rows[index];
+				if (charactersToRemove.Contains(CreateCharacterKey(row.ServerId, row.CharacterName)))
+					rows.RemoveAt(index);
+			}
+		}
+
+		SyncActiveAliases();
+		return removedCount;
+	}
+
 	public void PersistRows(IEnumerable<CharacterRow> rows)
 	{
 		var rowList = rows
@@ -134,4 +192,10 @@ internal sealed class PresetService
 			CharacterName = row.CharacterName
 		};
 	}
+
+	private static string CreateCharacterKey(SavedCharacter character) =>
+		CreateCharacterKey(character.ServerId, character.CharacterName);
+
+	private static string CreateCharacterKey(string serverId, string characterName) =>
+		$"{serverId.Trim()}\u001f{characterName.Trim()}";
 }

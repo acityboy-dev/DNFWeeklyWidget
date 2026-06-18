@@ -449,15 +449,6 @@
 												   Padding="4 5"
 												   VerticalAlignment="Center"
 												   TextTrimming="CharacterEllipsis"/>
-										<TextBox x:Name="PresetNameBox"
-												 Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
-												 Height="26"
-												 FontSize="13"
-												 Padding="4 2"
-												 VerticalAlignment="Center"
-												 Visibility="Collapsed"
-												 LostFocus="PresetNameBox_LostFocus"
-												 KeyDown="PresetNameBox_KeyDown"/>
 										<Button Grid.Column="1"
 												Tag="{Binding}"
 												Width="20"
@@ -477,18 +468,43 @@
 												  Height="11"/>
 										</Button>
 									</Grid>
-									<DataTemplate.Triggers>
-										<DataTrigger Binding="{Binding IsEditing}" Value="True">
-											<Setter TargetName="PresetNameText" Property="Visibility" Value="Collapsed"/>
-											<Setter TargetName="PresetNameBox" Property="Visibility" Value="Visible"/>
-										</DataTrigger>
-									</DataTemplate.Triggers>
 								</DataTemplate>
 							</ListBox.ItemTemplate>
 						</ListBox>
 					</StackPanel>
 				</Border>
 			</Popup>
+
+			<Border x:Name="PresetNameEditorPanel"
+					Grid.RowSpan="5"
+					Width="250"
+					Margin="8 0 0 0"
+					Padding="12"
+					HorizontalAlignment="Left"
+					VerticalAlignment="Center"
+					Background="{DynamicResource InputDropDownBackgroundBrush}"
+					BorderBrush="{DynamicResource InputFocusedBorderBrush}"
+					BorderThickness="1"
+					CornerRadius="10"
+					Visibility="Collapsed"
+					Panel.ZIndex="80">
+				<StackPanel>
+					<TextBlock Text="프리셋 이름"
+							   Margin="0 0 0 8"
+							   Foreground="{DynamicResource PrimaryTextBrush}"
+							   FontSize="13"
+							   FontWeight="SemiBold"/>
+					<TextBox x:Name="PresetNameEditorBox"
+							 Height="34"
+							 FontSize="15"
+							 LostFocus="PresetNameEditorBox_LostFocus"
+							 KeyDown="PresetNameEditorBox_KeyDown"/>
+					<TextBlock Text="Enter 저장  ·  Esc 취소"
+							   Margin="2 7 0 0"
+							   Foreground="{DynamicResource SecondaryTextBrush}"
+							   FontSize="11"/>
+				</StackPanel>
+			</Border>
 
 			<Grid x:Name="TitleBar"
 				  Grid.Row="0"
@@ -704,6 +720,10 @@
 						<ColumnDefinition Width="*"/>
 						<ColumnDefinition Width="10"/>
 						<ColumnDefinition Width="Auto"/>
+						<ColumnDefinition Width="10"/>
+						<ColumnDefinition Width="Auto"/>
+						<ColumnDefinition Width="10"/>
+						<ColumnDefinition Width="Auto"/>
 					</Grid.ColumnDefinitions>
 					<TextBlock Grid.Column="0"
 							   Text="모험단"
@@ -714,7 +734,23 @@
 							 FontSize="15"
 							 PreviewKeyDown="HudTextBox_PreviewKeyDown"
 							 KeyDown="AdventureNameBox_KeyDown"/>
-					<Button Grid.Column="4"
+					<CheckBox x:Name="KeepExistingCharactersOnImportBox"
+							  Grid.Column="4"
+							  Content="기존 캐릭터 유지"
+							  IsChecked="False"
+							  FontSize="13"
+							  ToolTip="체크하지 않으면 현재 프리셋의 캐릭터 목록을 던담 모험단 목록으로 교체합니다.&#10;체크하면 기존 캐릭터를 유지하고 중복을 제외한 캐릭터만 추가합니다."
+							  VerticalAlignment="Center"/>
+					<CheckBox x:Name="RemoveAdventureCharactersBox"
+							  Grid.Column="6"
+							  Content="모험단 빼기"
+							  IsChecked="False"
+							  FontSize="13"
+							  ToolTip="던담 모험단과 일치하는 캐릭터를 현재 프리셋에서 제거합니다."
+							  VerticalAlignment="Center"
+							  Click="RemoveAdventureCharactersBox_Click"/>
+					<Button x:Name="ImportAdventureButton"
+							Grid.Column="8"
 							Content="던담에서 리스트 불러오기"
 							MinWidth="186"
 							Height="34"

@@ -36,8 +36,10 @@ public partial class MainWindow : Window
 		public const string EnterCharacterName = "추가할 캐릭터명을 입력하세요.";
 		public const string EnterAdventureName = "모험단명을 입력하세요.";
 		public const string ImportAdventureLoading = "던담에서 불러오는 중입니다.";
+		public const string RemoveAdventureLoading = "던담에서 제외할 캐릭터를 찾는 중입니다.";
 		public const string SearchingAdventure = "던담에서 모험단을 검색하는 중입니다.";
 		public const string NoAdventureCharacters = "던담에서 불러올 캐릭터가 없습니다. 모험단명이 맞는지 확인하세요.";
+		public const string NoAdventureCharactersToRemove = "던담에서 제외 대상을 찾지 못했습니다. 모험단명이 맞는지 확인하세요.";
 		public const string SettingsSavedPrefix = "설정을 저장했습니다.";
 		public const string EnterApiKey = "API Key를 입력하세요.";
 		public const string AddCharacterPrompt = "캐릭터를 추가하세요.";
@@ -56,6 +58,12 @@ public partial class MainWindow : Window
 
 		public static string ImportedAdventureCharacters(int count) =>
 			$"던담에서 가져온 캐릭터 {count}개를 저장했습니다.";
+
+		public static string AppendedAdventureCharacters(int count) =>
+			$"던담에서 가져온 캐릭터 {count}개를 기존 목록에 추가했습니다.";
+
+		public static string RemovedAdventureCharacters(int count) =>
+			$"던담 모험단과 일치하는 캐릭터 {count}개를 현재 프리셋에서 제거했습니다.";
 
 		public static string DundamImportError(string message) =>
 			"던담 불러오기 오류: " + message;
@@ -140,6 +148,7 @@ public partial class MainWindow : Window
 	private bool _isUpdatingPresetList;
 	private bool _suppressNextPresetPanelClick;
 	private bool _isMutatingPresets;
+	private CardEntryPreset? _presetBeingRenamed;
 	private List<CharacterRow> _allCharacterRows = new();
 	private readonly ObservableCollection<CharacterRow> _characterRows = new();
 	private int _characterRenderGeneration;
@@ -798,6 +807,17 @@ public partial class MainWindow : Window
 		await ImportAdventureAsync();
 	}
 
+	private void RemoveAdventureCharactersBox_Click(object sender, RoutedEventArgs e)
+	{
+		var removeMode = RemoveAdventureCharactersBox.IsChecked == true;
+		KeepExistingCharactersOnImportBox.IsEnabled = !removeMode;
+		if (removeMode)
+			KeepExistingCharactersOnImportBox.IsChecked = false;
+		ImportAdventureButton.Content = removeMode
+			? "던담 모험단 빼기"
+			: "던담에서 리스트 불러오기";
+	}
+
 	private void HudTextBox_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
 	{
 		if (e.Key != Key.Tab)
@@ -909,6 +929,7 @@ public partial class MainWindow : Window
 		if (!PresetPanelPopup.IsOpen)
 			return;
 
+		CancelPresetNameEdit();
 		PresetPanelPopup.IsOpen = false;
 		UpdatePresetPanelButtonState(isOpen: false);
 		_suppressNextPresetPanelClick = true;
@@ -1044,84 +1065,61 @@ public partial class MainWindow : Window
 			return;
 
 		e.Handled = true;
-		foreach (var item in _settings.Presets)
-			item.IsEditing = false;
-
-		preset.IsEditing = true;
 		PresetListBox.SelectedItem = preset;
-		Dispatcher.BeginInvoke(() => FocusPresetNameBox(preset), DispatcherPriority.Loaded);
+		PresetPanelPopup.StaysOpen = true;
+		_presetBeingRenamed = preset;
+		PresetNameEditorBox.Text = preset.Name;
+		PresetNameEditorPanel.Visibility = Visibility.Visible;
+		Dispatcher.BeginInvoke(() =>
+		{
+			PresetNameEditorBox.Focus();
+			Keyboard.Focus(PresetNameEditorBox);
+			PresetNameEditorBox.SelectAll();
+		}, DispatcherPriority.Input);
 	}
 
-	private void PresetNameBox_LostFocus(object sender, RoutedEventArgs e)
+	private void PresetNameEditorBox_LostFocus(object sender, RoutedEventArgs e)
 	{
-		if (sender is FrameworkElement { DataContext: CardEntryPreset preset })
-			FinishPresetNameEdit(preset);
+		CancelPresetNameEdit();
 	}
 
-	private void PresetNameBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+	private void PresetNameEditorBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
 	{
-		if (sender is not FrameworkElement { DataContext: CardEntryPreset preset })
+		if (e.Key == Key.ImeProcessed)
 			return;
 
 		if (e.Key != Key.Enter && e.Key != Key.Escape)
 			return;
 
 		e.Handled = true;
-		FinishPresetNameEdit(preset);
+		if (e.Key == Key.Escape)
+			CancelPresetNameEdit();
+		else
+			FinishPresetNameEdit();
 		Keyboard.ClearFocus();
 	}
 
-	private void FinishPresetNameEdit(CardEntryPreset preset)
+	private void FinishPresetNameEdit()
 	{
-		preset.Name = string.IsNullOrWhiteSpace(preset.Name)
+		var preset = _presetBeingRenamed;
+		if (preset is null)
+			return;
+
+		_presetBeingRenamed = null;
+		var proposedName = PresetNameEditorBox.Text;
+		PresetNameEditorPanel.Visibility = Visibility.Collapsed;
+		PresetPanelPopup.StaysOpen = false;
+		preset.Name = string.IsNullOrWhiteSpace(proposedName)
 			? "프리셋"
-			: preset.Name.Trim();
-		preset.IsEditing = false;
+			: proposedName.Trim();
 		SaveSettings();
 	}
 
-	private void FocusPresetNameBox(CardEntryPreset preset)
+	private void CancelPresetNameEdit()
 	{
-		if (!preset.IsEditing || !_settings.Presets.Contains(preset))
-			return;
-
-		PresetListBox.ScrollIntoView(preset);
-		PresetListBox.UpdateLayout();
-
-		if (PresetListBox.ItemContainerGenerator.ContainerFromItem(preset) is not DependencyObject container)
-		{
-			Dispatcher.BeginInvoke(() => FocusPresetNameBox(preset), DispatcherPriority.ContextIdle);
-			return;
-		}
-
-		var textBox = FindDescendant<System.Windows.Controls.TextBox>(container);
-		if (textBox is null)
-		{
-			Dispatcher.BeginInvoke(() => FocusPresetNameBox(preset), DispatcherPriority.ContextIdle);
-			return;
-		}
-
-		textBox.Focus();
-		Keyboard.Focus(textBox);
-		textBox.SelectAll();
-	}
-
-	private static T? FindDescendant<T>(DependencyObject parent)
-		where T : DependencyObject
-	{
-		var childCount = VisualTreeHelper.GetChildrenCount(parent);
-		for (var index = 0; index < childCount; index++)
-		{
-			var child = VisualTreeHelper.GetChild(parent, index);
-			if (child is T match)
-				return match;
-
-			var descendant = FindDescendant<T>(child);
-			if (descendant is not null)
-				return descendant;
-		}
-
-		return null;
+		_presetBeingRenamed = null;
+		PresetNameEditorPanel.Visibility = Visibility.Collapsed;
+		PresetPanelPopup.StaysOpen = false;
 	}
 
 	private void UpdatePresetList()
@@ -1158,13 +1156,15 @@ public partial class MainWindow : Window
 			return true;
 		}
 
+		// A preset without an in-memory row collection must not inherit rows from the previous preset.
+		_allCharacterRows = new List<CharacterRow>();
 		await LoadCachedCharacterRowsAsync(deferSummary, batchRender);
 		return _allCharacterRows.Count > 0;
 	}
 
 	private void PersistCurrentPresetFromRows()
 	{
-		if (_allCharacterRows.Count == 0)
+		if (_allCharacterRows.Count == 0 && CurrentPreset.Characters.Count > 0)
 			return;
 
 		_presetService.PersistRows(_allCharacterRows);
@@ -1339,13 +1339,16 @@ public partial class MainWindow : Window
 	private async Task ImportAdventureAsync()
 	{
 		var adventureName = AdventureNameBox.Text.Trim();
+		var removeMode = RemoveAdventureCharactersBox.IsChecked == true;
 		if (string.IsNullOrWhiteSpace(adventureName))
 		{
 			StatusText.Text = LogText.EnterAdventureName;
 			return;
 		}
 
-		ShowLoadingOverlay(LogText.ImportAdventureLoading);
+		ShowLoadingOverlay(removeMode
+			? LogText.RemoveAdventureLoading
+			: LogText.ImportAdventureLoading);
 		try
 		{
 			StatusText.Text = LogText.SearchingAdventure;
@@ -1353,18 +1356,50 @@ public partial class MainWindow : Window
 			var characters = await _dundam.SearchAdventureCharactersAsync(adventureName);
 			if (characters.Count == 0)
 			{
-				StatusText.Text = LogText.NoAdventureCharacters;
+				StatusText.Text = removeMode
+					? LogText.NoAdventureCharactersToRemove
+					: LogText.NoAdventureCharacters;
 				return;
 			}
 
-			_presetService.ReplaceCurrentCharacters(characters);
+			if (removeMode)
+			{
+				PersistCurrentPresetFromRows();
+				var removedCount = _presetService.RemoveCurrentCharacters(characters);
+				ApplyInputToSettings();
+				SaveSettings();
+				AdventureNameBox.Text = "";
+
+				if (!await RestoreActivePresetRowsAsync(batchRender: true))
+				{
+					_allCharacterRows.Clear();
+					await RenderCharacterRowsAsync(batch: true);
+				}
+
+				StatusText.Text = LogText.RemovedAdventureCharacters(removedCount);
+				return;
+			}
+
+			var keepExistingCharacters = KeepExistingCharactersOnImportBox.IsChecked == true;
+			var importedCount = characters.Count;
+			if (keepExistingCharacters)
+			{
+				PersistCurrentPresetFromRows();
+				importedCount = _presetService.AppendCurrentCharacters(characters);
+			}
+			else
+			{
+				_presetService.ReplaceCurrentCharacters(characters);
+			}
 
 			ApplyInputToSettings();
 			SaveSettings();
 			AdventureNameBox.Text = "";
 
 			await RefreshAsync();
-			StatusText.Text = LogText.ImportedAdventureCharacters(characters.Count);
+			StatusText.Text = keepExistingCharacters
+				? LogText.AppendedAdventureCharacters(importedCount)
+				: LogText.ImportedAdventureCharacters(importedCount);
 		}
 		catch (Exception ex)
 		{
@@ -2287,6 +2322,14 @@ public partial class MainWindow : Window
 	{
 		if (e.OriginalSource is DependencyObject source && IsInteractiveArea(source))
 			return;
+
+		if (_presetBeingRenamed is not null || PresetNameEditorPanel.Visibility == Visibility.Visible)
+		{
+			CancelPresetNameEdit();
+			PresetNameEditorPanel.Visibility = Visibility.Collapsed;
+			PresetPanelPopup.StaysOpen = false;
+			PresetPanelPopup.IsOpen = false;
+		}
 
 		_windowDrag.Start(e);
 	}
