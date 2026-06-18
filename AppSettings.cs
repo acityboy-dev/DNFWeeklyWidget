@@ -1,8 +1,10 @@
 using System.IO;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace DNFWeeklyWidget;
@@ -10,7 +12,10 @@ namespace DNFWeeklyWidget;
 public class AppSettings
 {
 	private static readonly object SaveLock = new();
+	private const string LegacyApiKeyJsonName = "ApiKey";
+	private const string EncryptedApiKeyJsonName = "EncryptedApiKey";
 
+	[JsonIgnore]
 	public string ApiKey { get; set; } = "";
 	public string ServerId { get; set; } = "cain";
 	public string ThemeMode { get; set; } = "system";
@@ -60,10 +65,11 @@ public class AppSettings
 			return new AppSettings();
 
 		AppSettings settings;
+		var migrateLegacyApiKey = false;
 		try
 		{
 			var json = File.ReadAllText(PathFile);
-			settings = JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
+			settings = DeserializeForStorage(json, out migrateLegacyApiKey);
 		}
 		catch (JsonException)
 		{
@@ -77,7 +83,48 @@ public class AppSettings
 		settings.WeeklyContents ??= new WeeklyContentSettings();
 		settings.CharacterImageMode = CharacterRow.NormalizeImageMode(settings.CharacterImageMode);
 		settings.EnsurePresets();
+
+		if (migrateLegacyApiKey)
+			TryMigrateLegacyApiKey(settings);
+
 		return settings;
+	}
+
+	internal static AppSettings DeserializeForStorage(string json, out bool migrateLegacyApiKey)
+	{
+		var settings = JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
+		LoadApiKey(json, settings, out migrateLegacyApiKey);
+		return settings;
+	}
+
+	private static void LoadApiKey(string json, AppSettings settings, out bool migrateLegacyApiKey)
+	{
+		using var document = JsonDocument.Parse(json);
+		var root = document.RootElement;
+		migrateLegacyApiKey = root.TryGetProperty(LegacyApiKeyJsonName, out var legacyElement);
+
+		if (root.TryGetProperty(EncryptedApiKeyJsonName, out var encryptedElement) &&
+			encryptedElement.ValueKind == JsonValueKind.String &&
+			ApiKeyProtector.TryUnprotect(encryptedElement.GetString() ?? "", out var decryptedApiKey))
+		{
+			settings.ApiKey = decryptedApiKey;
+			return;
+		}
+
+		if (migrateLegacyApiKey && legacyElement.ValueKind == JsonValueKind.String)
+			settings.ApiKey = legacyElement.GetString() ?? "";
+	}
+
+	private static void TryMigrateLegacyApiKey(AppSettings settings)
+	{
+		try
+		{
+			settings.Save(sanitizeLegacyCopies: true);
+		}
+		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or CryptographicException)
+		{
+			// Keep the in-memory key usable and retry migration on the next launch.
+		}
 	}
 
 	public void EnsurePresets()
@@ -116,13 +163,14 @@ public class AppSettings
 
 	public void Save()
 	{
+		Save(sanitizeLegacyCopies: false);
+	}
+
+	private void Save(bool sanitizeLegacyCopies)
+	{
 		Directory.CreateDirectory(Dir);
 
-		var json = JsonSerializer.Serialize(this, new JsonSerializerOptions
-		{
-			WriteIndented = true,
-			Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-		});
+		var json = SerializeForStorage();
 
 		lock (SaveLock)
 		{
@@ -134,7 +182,51 @@ public class AppSettings
 				File.Replace(tempPath, PathFile, backupPath, ignoreMetadataErrors: true);
 			else
 				File.Move(tempPath, PathFile);
+
+			if (sanitizeLegacyCopies)
+			{
+				try
+				{
+					File.Copy(PathFile, backupPath, overwrite: true);
+				}
+				catch
+				{
+					try
+					{
+						File.Delete(backupPath);
+					}
+					catch
+					{
+					}
+
+					throw;
+				}
+
+				try
+				{
+					File.Delete(PathFile + ".broken");
+				}
+				catch (IOException)
+				{
+				}
+				catch (UnauthorizedAccessException)
+				{
+				}
+			}
 		}
+	}
+
+	internal string SerializeForStorage()
+	{
+		var options = new JsonSerializerOptions
+		{
+			WriteIndented = true,
+			Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+		};
+		var root = JsonSerializer.SerializeToNode(this, options)?.AsObject() ?? new JsonObject();
+		if (!string.IsNullOrEmpty(ApiKey))
+			root[EncryptedApiKeyJsonName] = ApiKeyProtector.Protect(ApiKey);
+		return root.ToJsonString(options);
 	}
 }
 

@@ -97,7 +97,7 @@ PFX 파일을 사용하는 경우 `-SigningCertificatePath`를 지정하고, 비
 %AppData%\DNFWeeklyWidget\ImageCache
 ```
 
-현재 Neople API Key는 `settings.json`에 평문으로 저장됩니다. 해당 파일을 공개하거나 공유하지 마세요.
+Neople API Key는 Windows DPAPI의 현재 사용자 범위로 암호화되어 `settings.json`에 저장됩니다. 암호화된 값은 동일한 Windows 사용자 계정에서만 복호화할 수 있습니다.
 
 ## 라이선스
 
