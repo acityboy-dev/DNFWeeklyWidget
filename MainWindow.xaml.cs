@@ -26,7 +26,7 @@ public partial class MainWindow : Window
 	private const double DeleteDropZoneRevealDistance = 260.0;
 	private const double DropIndicatorFadeMilliseconds = 140.0;
 	private const double CardScrollWheelStep = 168.0;
-	private const double CompactHeaderWidthThreshold = 765.0;
+	private const double CompactHeaderWidthThreshold = 900.0;
 	private const int WmEnterSizeMove = 0x0231;
 	private const int WmExitSizeMove = 0x0232;
 
@@ -111,6 +111,8 @@ public partial class MainWindow : Window
 	private readonly DispatcherTimer _weeklyResetNoticeTimer = new() { Interval = TimeSpan.FromMinutes(30) };
 	private readonly DispatcherTimer _resizeHeaderTimer = new() { Interval = TimeSpan.FromMilliseconds(120) };
 	private readonly DispatcherTimer _windowPlacementTimer = new() { Interval = TimeSpan.FromMilliseconds(180) };
+	private readonly DispatcherTimer _scrollIdleTimer = new() { Interval = TimeSpan.FromMilliseconds(120) };
+	private readonly DispatcherTimer _smoothScrollTimer = new() { Interval = TimeSpan.FromMilliseconds(16) };
 	private readonly SettingsPersistenceService _settingsPersistence;
 	private readonly PresetService _presetService;
 	private readonly CharacterCardService _characterCardService;
@@ -149,6 +151,8 @@ public partial class MainWindow : Window
 	private bool _suppressNextPresetPanelClick;
 	private bool _isMutatingPresets;
 	private CardEntryPreset? _presetBeingRenamed;
+	private CharacterRow? _memoEditingRow;
+	private bool? _lastEffectiveRaidHidden;
 	private List<CharacterRow> _allCharacterRows = new();
 	private readonly ObservableCollection<CharacterRow> _characterRows = new();
 	private int _characterRenderGeneration;
@@ -161,6 +165,7 @@ public partial class MainWindow : Window
 	private double? _queuedCardLayoutWidth;
 	private bool? _lastHeaderCompactMode;
 	private bool? _lastCompactOptionButtons;
+	private double? _smoothScrollTarget;
 	private CardEntryPreset CurrentPreset => _presetService.CurrentPreset;
 
 	public MainWindow()
@@ -184,6 +189,13 @@ public partial class MainWindow : Window
 			_windowPlacementTimer.Stop();
 			SaveWindowPlacement();
 		};
+		_scrollIdleTimer.Tick += (_, _) =>
+		{
+			_scrollIdleTimer.Stop();
+			if (!_isNativeSizeMove)
+				MarqueeTextBlock.IsAnimationSuspended = false;
+		};
+		_smoothScrollTimer.Tick += (_, _) => AdvanceSmoothScroll();
 		ShowInTaskbar = _settings.ShowInTaskbar;
 		RestoreWindowPlacement();
 		_themeOverrideIsLight = ThemeModeToOverride(_settings.ThemeMode);
@@ -203,9 +215,14 @@ public partial class MainWindow : Window
 		ApplyCompactMode();
 		ApplyHeaderButtonLayout(force: true);
 		UpdatePresetList();
+		UpdateRaidVisibilityState(force: true);
 		LoadCachedCharacterRows();
 		UpdateWeeklyResetText();
-		_weeklyResetTimer.Tick += (_, _) => UpdateWeeklyResetText();
+		_weeklyResetTimer.Tick += (_, _) =>
+		{
+			UpdateWeeklyResetText();
+			UpdateRaidVisibilityState();
+		};
 		_weeklyResetTimer.Start();
 		_weeklyResetNoticeTimer.Tick += async (_, _) => await RefreshWeeklyResetNoticeAsync();
 		_weeklyResetNoticeTimer.Start();
@@ -221,6 +238,14 @@ public partial class MainWindow : Window
 
 	private void CharacterScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e)
 	{
+		if (Math.Abs(e.VerticalChange) < 0.1)
+			return;
+		if (_smoothScrollTimer.IsEnabled && Mouse.LeftButton == MouseButtonState.Pressed)
+			StopSmoothScroll();
+
+		MarqueeTextBlock.IsAnimationSuspended = true;
+		_scrollIdleTimer.Stop();
+		_scrollIdleTimer.Start();
 	}
 
 	private void CharacterScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
@@ -229,13 +254,46 @@ public partial class MainWindow : Window
 			return;
 
 		var wheelSteps = e.Delta / 120.0;
-		var targetOffset = Math.Clamp(
-			CharacterScrollViewer.VerticalOffset - wheelSteps * CardScrollWheelStep,
+		var baseOffset = _smoothScrollTarget ?? CharacterScrollViewer.VerticalOffset;
+		_smoothScrollTarget = Math.Clamp(
+			baseOffset - wheelSteps * CardScrollWheelStep,
 			0,
 			CharacterScrollViewer.ScrollableHeight);
 
-		CharacterScrollViewer.ScrollToVerticalOffset(targetOffset);
+		if (!_smoothScrollTimer.IsEnabled)
+			_smoothScrollTimer.Start();
 		e.Handled = true;
+	}
+
+	private void AdvanceSmoothScroll()
+	{
+		if (_smoothScrollTarget is not { } requestedTarget)
+		{
+			_smoothScrollTimer.Stop();
+			return;
+		}
+
+		var target = Math.Clamp(requestedTarget, 0, CharacterScrollViewer.ScrollableHeight);
+		_smoothScrollTarget = target;
+		var current = CharacterScrollViewer.VerticalOffset;
+		var remaining = target - current;
+		if (Math.Abs(remaining) <= 0.75)
+		{
+			CharacterScrollViewer.ScrollToVerticalOffset(target);
+			StopSmoothScroll();
+			return;
+		}
+
+		var step = remaining * 0.3;
+		if (Math.Abs(step) < 1)
+			step = Math.Sign(remaining);
+		CharacterScrollViewer.ScrollToVerticalOffset(current + step);
+	}
+
+	private void StopSmoothScroll()
+	{
+		_smoothScrollTimer.Stop();
+		_smoothScrollTarget = null;
 	}
 
 	private void ShowLoadingOverlay(string message)
@@ -405,6 +463,8 @@ public partial class MainWindow : Window
 		_windowSource = null;
 		_resizeHeaderTimer.Stop();
 		_windowPlacementTimer.Stop();
+		_scrollIdleTimer.Stop();
+		StopSmoothScroll();
 		MarqueeTextBlock.IsAnimationSuspended = false;
 		_timer.Stop();
 		_weeklyResetTimer.Stop();
@@ -427,6 +487,7 @@ public partial class MainWindow : Window
 		{
 			case WmEnterSizeMove:
 				_isNativeSizeMove = true;
+				StopSmoothScroll();
 				MarqueeTextBlock.IsAnimationSuspended = true;
 				break;
 
@@ -540,13 +601,25 @@ public partial class MainWindow : Window
 		_settings.EnableUserDataCache = enableUserDataCache;
 	}
 
+	private void PreviewShowCardMemos(bool showCardMemos)
+	{
+		_settings.ShowCardMemos = showCardMemos;
+		ApplyMemoVisibilityToRows(_allCharacterRows);
+	}
+
+	private void PreviewAutoHideRaidContents(bool autoHide)
+	{
+		_settings.AutoHideRaidContents = autoHide;
+		UpdateRaidVisibilityState(force: true);
+	}
+
 	private void PreviewWeeklyContents(WeeklyContentSettings weeklyContents)
 	{
 		_settings.WeeklyContents = CloneWeeklyContentSettings(weeklyContents);
 		ApplyWeeklyContentSettingsToCurrentRows();
 	}
 
-	private static WeeklyContentSettings CloneWeeklyContentSettings(WeeklyContentSettings settings) => new()
+	internal static WeeklyContentSettings CloneWeeklyContentSettings(WeeklyContentSettings settings) => new()
 	{
 		ShowWeeklyEquipmentLoot = settings.ShowWeeklyEquipmentLoot,
 		ShowWeeklyOathLoot = settings.ShowWeeklyOathLoot,
@@ -837,6 +910,13 @@ public partial class MainWindow : Window
 
 	private async void Window_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
 	{
+		if (e.Key == Key.Escape && CardMemoEditorPanel.Visibility == Visibility.Visible)
+		{
+			e.Handled = true;
+			CloseCardMemoEditor();
+			return;
+		}
+
 		if (e.Key != Key.F5)
 			return;
 
@@ -850,6 +930,44 @@ public partial class MainWindow : Window
 			return;
 
 		await RemoveCharacterAsync(row, GetOrderedCharacterRows());
+	}
+
+	private void EditCardMemo_Click(object sender, RoutedEventArgs e)
+	{
+		if (sender is not System.Windows.Controls.Button { Tag: CharacterRow row })
+			return;
+
+		_memoEditingRow = row;
+		CardMemoEditorTitle.Text = $"{row.CharacterName} 메모";
+		CardMemoEditorBox.Text = row.Memo;
+		CardMemoEditorPanel.Visibility = Visibility.Visible;
+		Dispatcher.BeginInvoke(() =>
+		{
+			CardMemoEditorBox.Focus();
+			Keyboard.Focus(CardMemoEditorBox);
+			CardMemoEditorBox.CaretIndex = CardMemoEditorBox.Text.Length;
+		}, DispatcherPriority.Input);
+	}
+
+	private void SaveCardMemo_Click(object sender, RoutedEventArgs e)
+	{
+		if (_memoEditingRow is null)
+			return;
+
+		_memoEditingRow.Memo = CardMemoEditorBox.Text;
+		_presetService.UpdateCurrentMemo(_memoEditingRow);
+		SaveSettings();
+		CloseCardMemoEditor();
+	}
+
+	private void CancelCardMemo_Click(object sender, RoutedEventArgs e) => CloseCardMemoEditor();
+
+	private void CloseCardMemoEditor()
+	{
+		_memoEditingRow = null;
+		CardMemoEditorPanel.Visibility = Visibility.Collapsed;
+		CardMemoEditorBox.Clear();
+		Keyboard.ClearFocus();
 	}
 
 	private async void RefreshNow_Click(object sender, RoutedEventArgs e)
@@ -873,6 +991,16 @@ public partial class MainWindow : Window
 		StatusText.Text = _settings.FilterIncompleteOnly
 			? LogText.IncompleteFilterOn
 			: LogText.IncompleteFilterOff;
+	}
+
+	private void RaidVisibility_Click(object sender, RoutedEventArgs e)
+	{
+		_settings.HideRaidContents = !_settings.HideRaidContents;
+		UpdateRaidVisibilityState(force: true);
+		SaveSettings();
+		StatusText.Text = _settings.HideRaidContents
+			? "레이드 콘텐츠를 숨겼습니다."
+			: "레이드 콘텐츠를 표시합니다.";
 	}
 
 	private void FameSort_Click(object sender, RoutedEventArgs e)
@@ -980,6 +1108,7 @@ public partial class MainWindow : Window
 
 		PersistCurrentPresetFromRows();
 		_presetService.SelectPreset(preset.Id);
+		UpdateCurrentPresetName();
 		var selectedPresetId = preset.Id;
 		ClearIncompleteContentSummary();
 		if (!await RestoreActivePresetRowsAsync(deferSummary: true, batchRender: true))
@@ -1112,6 +1241,7 @@ public partial class MainWindow : Window
 		preset.Name = string.IsNullOrWhiteSpace(proposedName)
 			? "프리셋"
 			: proposedName.Trim();
+		UpdateCurrentPresetName();
 		SaveSettings();
 	}
 
@@ -1131,11 +1261,18 @@ public partial class MainWindow : Window
 			PresetListBox.ItemsSource = null;
 			PresetListBox.ItemsSource = _settings.Presets.ToList();
 			PresetListBox.SelectedItem = selectedPreset;
+			UpdateCurrentPresetName();
 		}
 		finally
 		{
 			_isUpdatingPresetList = false;
 		}
+	}
+
+	private void UpdateCurrentPresetName()
+	{
+		CurrentPresetNameText.Text = CurrentPreset.Name;
+		CurrentPresetNameText.ToolTip = CurrentPreset.Name;
 	}
 
 	private async Task<bool> RestoreActivePresetRowsAsync(bool deferSummary = false, bool batchRender = false)
@@ -1151,6 +1288,7 @@ public partial class MainWindow : Window
 				.Where(x => !x.IsDropIndicator)
 				.ToList();
 			ApplyCharacterImageModeToRows(_allCharacterRows);
+			ApplyMemoVisibilityToRows(_allCharacterRows);
 			ApplyWeeklyContentSettingsToRows(_allCharacterRows, deferSummary);
 			await RenderCharacterRowsAsync(batchRender);
 			return true;
@@ -1172,6 +1310,16 @@ public partial class MainWindow : Window
 
 	private void UpdateToolbarOptionButtons(bool useCompactButtons)
 	{
+		RaidVisibilityButton.Content = useCompactButtons ? "레" : "레이드 미표시";
+		RaidVisibilityButton.Width = useCompactButtons ? 30 : 102;
+		RaidVisibilityButton.Height = useCompactButtons ? 26 : 34;
+		RaidVisibilityButton.FontSize = useCompactButtons ? 12 : 13;
+		RaidVisibilityButton.Padding = new Thickness(0);
+		RaidVisibilityButton.Opacity = _settings.HideRaidContents ? 1.0 : 0.68;
+		RaidVisibilityButton.Visibility = _settings.AutoHideRaidContents
+			? Visibility.Collapsed
+			: Visibility.Visible;
+
 		IncompleteFilterButton.Content = _settings.FilterIncompleteOnly
 			? useCompactButtons ? "전" : "전체보기"
 			: useCompactButtons ? "미" : "미완료만";
@@ -1203,6 +1351,7 @@ public partial class MainWindow : Window
 		ApplyHudPanelCompactState(isCompact, animate);
 		TitleBar.Margin = isCompact ? new Thickness(0, 0, 0, 8) : new Thickness(0, 0, 0, 18);
 		TitleText.FontSize = isCompact ? 15 : 24;
+		CurrentPresetNameText.FontSize = isCompact ? 11 : 13;
 
 		CompactModeIcon.Data = Geometry.Parse(isCompact
 			? "M 2 6 L 8 12 L 14 6 M 2 1 L 14 1"
@@ -1424,6 +1573,8 @@ public partial class MainWindow : Window
 		var originalAutoRefreshInterval = _settings.AutoRefreshIntervalMinutes;
 		var originalShowInTaskbar = _settings.ShowInTaskbar;
 		var originalEnableUserDataCache = _settings.EnableUserDataCache;
+		var originalShowCardMemos = _settings.ShowCardMemos;
+		var originalAutoHideRaidContents = _settings.AutoHideRaidContents;
 		var settingsWindow = new SettingsWindow(
 			_settings.ApiKey,
 			_settings.WeeklyContents,
@@ -1437,6 +1588,8 @@ public partial class MainWindow : Window
 			_settings.AutoRefreshIntervalMinutes,
 			_settings.ShowInTaskbar,
 			_settings.EnableUserDataCache,
+			_settings.ShowCardMemos,
+			_settings.AutoHideRaidContents,
 			CurrentIsLightTheme,
 			PreviewThemeMode,
 			PreviewLowPerformanceMode,
@@ -1448,6 +1601,8 @@ public partial class MainWindow : Window
 			PreviewAutoRefreshInterval,
 			PreviewShowInTaskbar,
 			PreviewEnableUserDataCache,
+			PreviewShowCardMemos,
+			PreviewAutoHideRaidContents,
 			PreviewWeeklyContents,
 			ResolveThemeIsLight)
 		{
@@ -1467,6 +1622,8 @@ public partial class MainWindow : Window
 			PreviewAutoRefreshInterval(originalAutoRefreshInterval);
 			PreviewShowInTaskbar(originalShowInTaskbar);
 			PreviewEnableUserDataCache(originalEnableUserDataCache);
+			PreviewShowCardMemos(originalShowCardMemos);
+			PreviewAutoHideRaidContents(originalAutoHideRaidContents);
 			return;
 		}
 
@@ -1486,6 +1643,8 @@ public partial class MainWindow : Window
 		_settings.AutoRefreshIntervalMinutes = ClampAutoRefreshInterval(settingsWindow.AutoRefreshIntervalMinutes);
 		_settings.ShowInTaskbar = settingsWindow.ShowInTaskbarSetting;
 		_settings.EnableUserDataCache = settingsWindow.EnableUserDataCache;
+		_settings.ShowCardMemos = settingsWindow.ShowCardMemos;
+		_settings.AutoHideRaidContents = settingsWindow.AutoHideRaidContents;
 		ShowInTaskbar = _settings.ShowInTaskbar;
 		SaveSettings(allowWhenDisabled: true);
 		ApplyAutoRefreshInterval();
@@ -1523,6 +1682,8 @@ public partial class MainWindow : Window
 
 			var cardWidth = CalculateCardWidth();
 			var row = await _characterCardService.CreateRowAsync(saved, cardWidth);
+			_presetService.ApplyCurrentMemos([row]);
+			ApplyMemoVisibilityToRows([row]);
 			var rows = GetOrderedCharacterRows();
 			rows.RemoveAll(x =>
 				string.Equals(x.ServerId, row.ServerId, StringComparison.OrdinalIgnoreCase) &&
@@ -1580,6 +1741,8 @@ public partial class MainWindow : Window
 			var cardWidth = CalculateCardWidth();
 			var rows = await _characterCardService.CreateRowsAsync(CurrentPreset.Characters, cardWidth);
 
+			_presetService.ApplyCurrentMemos(rows);
+			ApplyMemoVisibilityToRows(rows);
 			ApplyWeeklyContentSettingsToRows(rows);
 
 			await SetCharacterRowsAsync(rows, batchRender: rows.Count >= 20);
@@ -1613,9 +1776,10 @@ public partial class MainWindow : Window
 	private void ApplyWeeklyContentSettingsToRows(IReadOnlyList<CharacterRow> rows, bool deferSummary = false)
 	{
 		var context = CreateWeeklyDisplayContext(rows);
+		var effectiveSettings = GetEffectiveWeeklyContentSettings();
 
 		foreach (var row in rows)
-			row.ApplyWeeklyContentSettings(_settings.WeeklyContents, context);
+			row.ApplyWeeklyContentSettings(effectiveSettings, context);
 
 		if (deferSummary)
 		{
@@ -1701,6 +1865,31 @@ public partial class MainWindow : Window
 			? "점검 반영"
 			: "점검 미반영";
 		WeeklyResetText.Text = $"주간 초기화 ({maintenanceStatus}) · {remainingText} · {nextReset:M/d(ddd) HH:mm}";
+	}
+
+	private void UpdateRaidVisibilityState(bool force = false)
+	{
+		var effectiveHidden = IsRaidContentHidden();
+		if (!force && _lastEffectiveRaidHidden == effectiveHidden)
+			return;
+
+		_lastEffectiveRaidHidden = effectiveHidden;
+		ApplyHeaderButtonLayout(force: true);
+		ApplyWeeklyContentSettingsToCurrentRows();
+	}
+
+	private bool IsRaidContentHidden()
+	{
+		return _settings.AutoHideRaidContents
+			? RaidDisplayPolicy.IsAutoHideWindow(DateTime.Now)
+			: _settings.HideRaidContents;
+	}
+
+	private WeeklyContentSettings GetEffectiveWeeklyContentSettings()
+	{
+		return RaidDisplayPolicy.CreateEffectiveSettings(
+			_settings.WeeklyContents,
+			IsRaidContentHidden());
 	}
 
 	private async Task RefreshWeeklyResetNoticeAsync()
@@ -2104,6 +2293,8 @@ public partial class MainWindow : Window
 			return;
 
 		ApplyCharacterImageModeToRows(rows);
+		_presetService.ApplyCurrentMemos(rows);
+		ApplyMemoVisibilityToRows(rows);
 		ApplyWeeklyContentSettingsToRows(rows, deferSummary);
 		await SetCharacterRowsAsync(rows, batchRender);
 		StatusText.Text = LogText.CachedCardsLoaded(rows.Count);
@@ -2131,6 +2322,12 @@ public partial class MainWindow : Window
 		var imageMode = CharacterRow.NormalizeImageMode(characterImageMode);
 		foreach (var row in rows.Where(x => !x.IsDropIndicator))
 			row.ImageMode = imageMode;
+	}
+
+	private void ApplyMemoVisibilityToRows(IEnumerable<CharacterRow> rows)
+	{
+		foreach (var row in rows.Where(row => !row.IsDropIndicator))
+			row.ShowMemo = _settings.ShowCardMemos;
 	}
 
 	private bool HasDisplayedCharacterRows()

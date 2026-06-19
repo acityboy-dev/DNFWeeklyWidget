@@ -59,6 +59,7 @@ internal sealed class PresetService
 	{
 		CurrentPreset.Characters.Clear();
 		CurrentPreset.CachedCards.Clear();
+		CurrentPreset.CardMemos.Clear();
 		_rowCollections[CurrentPreset.Id] = new ObservableCollection<CharacterRow>();
 		SyncActiveAliases();
 	}
@@ -72,6 +73,7 @@ internal sealed class PresetService
 				CharacterName = character.CharacterName
 			})
 			.ToList();
+		PruneCurrentMemos();
 		SyncActiveAliases();
 	}
 
@@ -118,6 +120,8 @@ internal sealed class PresetService
 			charactersToRemove.Contains(CreateCharacterKey(character)));
 		CurrentPreset.CachedCards.RemoveAll(card =>
 			charactersToRemove.Contains(CreateCharacterKey(card.ServerId, card.CharacterName)));
+		CurrentPreset.CardMemos.RemoveAll(memo =>
+			charactersToRemove.Contains(CreateCharacterKey(memo.ServerId, memo.CharacterName)));
 
 		if (_rowCollections.TryGetValue(CurrentPreset.Id, out var rows))
 		{
@@ -140,6 +144,7 @@ internal sealed class PresetService
 			.ToList();
 		CurrentPreset.Characters = rowList.Select(ToSavedCharacter).ToList();
 		CurrentPreset.CachedCards = rowList.Select(row => row.ToCache()).ToList();
+		SyncCurrentMemos(rowList);
 		_rowCollections[CurrentPreset.Id] = new ObservableCollection<CharacterRow>(rowList);
 		SyncActiveAliases();
 	}
@@ -163,6 +168,33 @@ internal sealed class PresetService
 		SyncActiveAliases();
 	}
 
+	public void ApplyCurrentMemos(IEnumerable<CharacterRow> rows)
+	{
+		foreach (var row in rows.Where(row => !row.IsDropIndicator))
+		{
+			var memo = CurrentPreset.CardMemos.FirstOrDefault(item =>
+				string.Equals(item.ServerId, row.ServerId, StringComparison.OrdinalIgnoreCase) &&
+				string.Equals(item.CharacterName, row.CharacterName, StringComparison.OrdinalIgnoreCase));
+			row.Memo = memo?.Memo ?? "";
+		}
+	}
+
+	public void UpdateCurrentMemo(CharacterRow row)
+	{
+		CurrentPreset.CardMemos.RemoveAll(item =>
+			string.Equals(item.ServerId, row.ServerId, StringComparison.OrdinalIgnoreCase) &&
+			string.Equals(item.CharacterName, row.CharacterName, StringComparison.OrdinalIgnoreCase));
+		if (!string.IsNullOrWhiteSpace(row.Memo))
+		{
+			CurrentPreset.CardMemos.Add(new CardMemoEntry
+			{
+				ServerId = row.ServerId,
+				CharacterName = row.CharacterName,
+				Memo = row.Memo
+			});
+		}
+	}
+
 	public bool TryGetRows(string presetId, out ObservableCollection<CharacterRow> rows)
 	{
 		return _rowCollections.TryGetValue(presetId, out rows!);
@@ -182,6 +214,28 @@ internal sealed class PresetService
 	{
 		_settings.Characters = CurrentPreset.Characters;
 		_settings.CachedCards = CurrentPreset.CachedCards;
+	}
+
+	private void SyncCurrentMemos(IEnumerable<CharacterRow> rows)
+	{
+		CurrentPreset.CardMemos = rows
+			.Where(row => !string.IsNullOrWhiteSpace(row.Memo))
+			.Select(row => new CardMemoEntry
+			{
+				ServerId = row.ServerId,
+				CharacterName = row.CharacterName,
+				Memo = row.Memo
+			})
+			.ToList();
+	}
+
+	private void PruneCurrentMemos()
+	{
+		var keys = CurrentPreset.Characters
+			.Select(CreateCharacterKey)
+			.ToHashSet(StringComparer.OrdinalIgnoreCase);
+		CurrentPreset.CardMemos.RemoveAll(memo =>
+			!keys.Contains(CreateCharacterKey(memo.ServerId, memo.CharacterName)));
 	}
 
 	private static SavedCharacter ToSavedCharacter(CharacterRow row)

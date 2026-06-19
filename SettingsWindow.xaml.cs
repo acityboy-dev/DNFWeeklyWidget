@@ -29,6 +29,8 @@ public partial class SettingsWindow : Window
 	private readonly Action<int>? _previewAutoRefreshInterval;
 	private readonly Action<bool>? _previewShowInTaskbar;
 	private readonly Action<bool>? _previewEnableUserDataCache;
+	private readonly Action<bool>? _previewShowCardMemos;
+	private readonly Action<bool>? _previewAutoHideRaidContents;
 	private readonly Action<WeeklyContentSettings>? _previewWeeklyContents;
 	private readonly Func<string, bool>? _resolveIsLightTheme;
 	private readonly ManualWindowDrag _windowDrag;
@@ -50,6 +52,8 @@ public partial class SettingsWindow : Window
 		int autoRefreshIntervalMinutes,
 		bool showInTaskbar,
 		bool enableUserDataCache,
+		bool showCardMemos,
+		bool autoHideRaidContents,
 		bool isLightTheme,
 		Action<string>? previewThemeMode = null,
 		Action<bool>? previewLowPerformanceMode = null,
@@ -61,6 +65,8 @@ public partial class SettingsWindow : Window
 		Action<int>? previewAutoRefreshInterval = null,
 		Action<bool>? previewShowInTaskbar = null,
 		Action<bool>? previewEnableUserDataCache = null,
+		Action<bool>? previewShowCardMemos = null,
+		Action<bool>? previewAutoHideRaidContents = null,
 		Action<WeeklyContentSettings>? previewWeeklyContents = null,
 		Func<string, bool>? resolveIsLightTheme = null)
 	{
@@ -75,6 +81,8 @@ public partial class SettingsWindow : Window
 		_previewAutoRefreshInterval = previewAutoRefreshInterval;
 		_previewShowInTaskbar = previewShowInTaskbar;
 		_previewEnableUserDataCache = previewEnableUserDataCache;
+		_previewShowCardMemos = previewShowCardMemos;
+		_previewAutoHideRaidContents = previewAutoHideRaidContents;
 		_previewWeeklyContents = previewWeeklyContents;
 		_resolveIsLightTheme = resolveIsLightTheme;
 		InitializeComponent();
@@ -120,6 +128,8 @@ public partial class SettingsWindow : Window
 		AutoRefreshIntervalBox.Text = ClampAutoRefreshInterval(autoRefreshIntervalMinutes).ToString();
 		ShowInTaskbarBox.IsChecked = showInTaskbar;
 		EnableUserDataCacheBox.IsChecked = enableUserDataCache;
+		ShowCardMemosBox.IsChecked = showCardMemos;
+		AutoHideRaidContentsBox.IsChecked = autoHideRaidContents;
 		WeeklyEquipmentLootBox.IsChecked = weeklyContents.ShowWeeklyEquipmentLoot;
 		WeeklyOathLootBox.IsChecked = weeklyContents.ShowWeeklyOathLoot;
 		WeeklyCrystalLootBox.IsChecked = weeklyContents.ShowWeeklyCrystalLoot;
@@ -141,6 +151,10 @@ public partial class SettingsWindow : Window
 		ShowInTaskbarBox.Unchecked += PreviewShowInTaskbar;
 		EnableUserDataCacheBox.Checked += PreviewEnableUserDataCache;
 		EnableUserDataCacheBox.Unchecked += PreviewEnableUserDataCache;
+		ShowCardMemosBox.Checked += PreviewShowCardMemos;
+		ShowCardMemosBox.Unchecked += PreviewShowCardMemos;
+		AutoHideRaidContentsBox.Checked += PreviewAutoHideRaidContents;
+		AutoHideRaidContentsBox.Unchecked += PreviewAutoHideRaidContents;
 
 		foreach (var checkBox in GetWeeklyContentCheckBoxes())
 		{
@@ -172,6 +186,8 @@ public partial class SettingsWindow : Window
 		: 30;
 	public bool ShowInTaskbarSetting => ShowInTaskbarBox.IsChecked == true;
 	public bool EnableUserDataCache => EnableUserDataCacheBox.IsChecked == true;
+	public bool ShowCardMemos => ShowCardMemosBox.IsChecked == true;
+	public bool AutoHideRaidContents => AutoHideRaidContentsBox.IsChecked == true;
 
 	public WeeklyContentSettings WeeklyContents => new()
 	{
@@ -347,6 +363,16 @@ public partial class SettingsWindow : Window
 	private void PreviewEnableUserDataCache(object sender, RoutedEventArgs e)
 	{
 		_previewEnableUserDataCache?.Invoke(EnableUserDataCache);
+	}
+
+	private void PreviewShowCardMemos(object sender, RoutedEventArgs e)
+	{
+		_previewShowCardMemos?.Invoke(ShowCardMemos);
+	}
+
+	private void PreviewAutoHideRaidContents(object sender, RoutedEventArgs e)
+	{
+		_previewAutoHideRaidContents?.Invoke(AutoHideRaidContents);
 	}
 
 	private void PreviewWeeklyContents(object sender, RoutedEventArgs e)

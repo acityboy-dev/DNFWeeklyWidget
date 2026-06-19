@@ -252,7 +252,7 @@
 			<Setter Property="BorderThickness" Value="0"/>
 			<Setter Property="CornerRadius" Value="14"/>
 			<Setter Property="Padding" Value="12"/>
-			<Setter Property="MinHeight" Value="240"/>
+			<Setter Property="MinHeight" Value="0"/>
 			<Style.Triggers>
 				<DataTrigger Binding="{Binding IsDragging}" Value="True">
 					<Setter Property="Opacity" Value="0.35"/>
@@ -513,20 +513,39 @@
 					<ColumnDefinition Width="*"/>
 					<ColumnDefinition Width="Auto"/>
 				</Grid.ColumnDefinitions>
-				<TextBlock x:Name="TitleText"
-						   Text="DNF Weekly Widget"
-						   FontFamily="Segoe UI Variable Display, Segoe UI"
-						   Foreground="{DynamicResource PrimaryTextBrush}"
-						   FontSize="24"
-						   FontWeight="Regular"
-						   VerticalAlignment="Center"
-						   TextTrimming="CharacterEllipsis"
-						   Margin="0 0 12 0"/>
+				<Grid Margin="0 0 12 0">
+					<Grid.ColumnDefinitions>
+						<ColumnDefinition Width="Auto"/>
+						<ColumnDefinition Width="*"/>
+					</Grid.ColumnDefinitions>
+					<TextBlock x:Name="TitleText"
+							   Text="DNF Weekly Widget"
+							   FontFamily="Segoe UI Variable Display, Segoe UI"
+							   Foreground="{DynamicResource PrimaryTextBrush}"
+							   FontSize="24"
+							   FontWeight="Regular"
+							   VerticalAlignment="Center"/>
+					<TextBlock x:Name="CurrentPresetNameText"
+							   Grid.Column="1"
+							   Foreground="{DynamicResource TertiaryTextBrush}"
+							   FontSize="13"
+							   VerticalAlignment="Center"
+							   TextTrimming="CharacterEllipsis"
+							   Margin="10 3 0 0"/>
+				</Grid>
 
 				<StackPanel Grid.Column="1"
 							Orientation="Horizontal"
 							HorizontalAlignment="Right"
 							VerticalAlignment="Center">
+					<Button x:Name="RaidVisibilityButton"
+							Content="레이드 미표시"
+							Width="102"
+							Height="34"
+							FontSize="13"
+							Margin="0 0 8 0"
+							ToolTip="카드의 레이드 콘텐츠 표시 전환"
+							Click="RaidVisibility_Click"/>
 					<Button x:Name="IncompleteFilterButton"
 							Content="미완료만"
 							Width="76"
@@ -1106,13 +1125,42 @@
 												</DataTemplate>
 												</ItemsControl.ItemTemplate>
 											</ItemsControl>
+
+											<Border Margin="0 8 22 0"
+													Padding="8 6"
+													CornerRadius="6"
+													Background="{DynamicResource ButtonBackgroundBrush}"
+													Visibility="{Binding ShowMemoArea, Converter={StaticResource BoolToVisibilityConverter}}">
+												<TextBlock Text="{Binding Memo}"
+														   Foreground="{DynamicResource SecondaryTextBrush}"
+														   FontSize="12"
+														   TextWrapping="Wrap"/>
+											</Border>
 										</StackPanel>
 
 										<Button Content="×"
 												Tag="{Binding}"
 												Style="{StaticResource CardRemoveButtonStyle}"
 												Panel.ZIndex="5"
-												Click="RemoveCharacter_Click"/>
+											Click="RemoveCharacter_Click"/>
+									<Button Tag="{Binding}"
+											Width="24"
+											Height="24"
+											Padding="4"
+											HorizontalAlignment="Right"
+											VerticalAlignment="Bottom"
+											Margin="0"
+											Background="Transparent"
+											BorderThickness="0"
+											ToolTip="메모 추가 또는 편집"
+											Panel.ZIndex="5"
+											Click="EditCardMemo_Click">
+										<Path Data="M3 13 L4.2 9.4 L10.2 3.4 L12.6 5.8 L6.6 11.8 Z M4.2 9.4 L6.6 11.8 M9.4 4.2 L11.8 6.6"
+												  Stroke="{DynamicResource SecondaryTextBrush}"
+												  StrokeThickness="1.2"
+												  StrokeLineJoin="Round"
+												  Stretch="Uniform"/>
+									</Button>
 									</Grid>
 								</Border>
 							</DataTemplate>
@@ -1263,6 +1311,40 @@
 					   FontSize="12"
 					   Margin="0 8 0 -8"
 					   Text=""/>
+
+			<Border x:Name="CardMemoEditorPanel"
+					Grid.RowSpan="5"
+					Margin="-22"
+					Background="#66000000"
+					Visibility="Collapsed"
+					Panel.ZIndex="29">
+				<Border Width="420"
+						Padding="18"
+						CornerRadius="12"
+						Background="{DynamicResource InputDropDownBackgroundBrush}"
+						HorizontalAlignment="Center"
+						VerticalAlignment="Center">
+					<StackPanel>
+						<TextBlock x:Name="CardMemoEditorTitle"
+								   Foreground="{DynamicResource PrimaryTextBrush}"
+								   FontSize="16"
+								   FontWeight="SemiBold"
+								   Margin="0 0 0 10"/>
+						<TextBox x:Name="CardMemoEditorBox"
+								 AcceptsReturn="True"
+								 TextWrapping="Wrap"
+								 VerticalContentAlignment="Top"
+								 Padding="8 6"
+								 MaxLength="500"
+								 MinHeight="100"
+								 VerticalScrollBarVisibility="Auto"/>
+						<StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0 12 0 0">
+							<Button Content="취소" Width="70" Height="30" Margin="0 0 8 0" Click="CancelCardMemo_Click"/>
+							<Button Content="저장" Width="70" Height="30" Click="SaveCardMemo_Click"/>
+						</StackPanel>
+					</StackPanel>
+				</Border>
+			</Border>
 
 			<Border x:Name="LoadingOverlay"
 					Grid.RowSpan="5"

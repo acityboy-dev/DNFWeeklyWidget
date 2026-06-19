@@ -104,6 +104,9 @@ internal sealed class SettingsPersistenceService
 			AutoRefreshIntervalMinutes = _settings.AutoRefreshIntervalMinutes,
 			ShowInTaskbar = _settings.ShowInTaskbar,
 			EnableUserDataCache = _settings.EnableUserDataCache,
+			ShowCardMemos = _settings.ShowCardMemos,
+			HideRaidContents = _settings.HideRaidContents,
+			AutoHideRaidContents = _settings.AutoHideRaidContents,
 			Columns = _settings.Columns,
 			WindowLeft = _settings.WindowLeft,
 			WindowTop = _settings.WindowTop,
@@ -118,7 +121,8 @@ internal sealed class SettingsPersistenceService
 					Id = preset.Id,
 					Name = preset.Name,
 					Characters = CloneCharacters(preset.Characters),
-					CachedCards = CloneCachedCards(preset.CachedCards)
+					CachedCards = CloneCachedCards(preset.CachedCards),
+					CardMemos = CloneCardMemos(preset.CardMemos)
 				})
 				.ToList(),
 			WeeklyContents = CloneWeeklyContents(_settings.WeeklyContents)
@@ -156,6 +160,18 @@ internal sealed class SettingsPersistenceService
 				ImagePath = card.ImagePath,
 				CompactImageOffsetX = card.CompactImageOffsetX,
 				CompactImageOffsetY = card.CompactImageOffsetY
+			})
+			.ToList();
+	}
+
+	private static List<CardMemoEntry> CloneCardMemos(IEnumerable<CardMemoEntry> memos)
+	{
+		return memos
+			.Select(memo => new CardMemoEntry
+			{
+				ServerId = memo.ServerId,
+				CharacterName = memo.CharacterName,
+				Memo = memo.Memo
 			})
 			.ToList();
 	}

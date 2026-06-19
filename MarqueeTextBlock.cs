@@ -11,6 +11,7 @@ public class MarqueeTextBlock : FrameworkElement
 	private static readonly TimeSpan StartPause = TimeSpan.FromMilliseconds(900);
 	private static readonly TimeSpan EndPause = TimeSpan.FromMilliseconds(1200);
 	private static readonly HashSet<MarqueeTextBlock> ActiveInstances = [];
+	private static readonly List<MarqueeTextBlock> RenderingSnapshot = [];
 	private static bool _isRenderingSubscribed;
 	private static bool _isAnimationSuspended;
 
@@ -48,6 +49,8 @@ public class MarqueeTextBlock : FrameworkElement
 	private double _offset;
 	private double _textWidth;
 	private bool _resetAfterPause;
+	private FormattedText? _formattedText;
+	private double _formattedTextPixelsPerDip;
 
 	public MarqueeTextBlock()
 	{
@@ -104,7 +107,7 @@ public class MarqueeTextBlock : FrameworkElement
 
 	protected override System.Windows.Size MeasureOverride(System.Windows.Size availableSize)
 	{
-		var text = CreateFormattedText();
+		var text = GetFormattedText();
 		_textWidth = text.WidthIncludingTrailingWhitespace;
 		return new System.Windows.Size(0, Math.Ceiling(text.Height));
 	}
@@ -113,7 +116,7 @@ public class MarqueeTextBlock : FrameworkElement
 	{
 		base.OnRender(drawingContext);
 
-		var text = CreateFormattedText();
+		var text = GetFormattedText();
 		_textWidth = text.WidthIncludingTrailingWhitespace;
 		var y = Math.Max(0, (ActualHeight - text.Height) / 2);
 		var x = ShouldMarquee() ? -Math.Min(_offset, MaxOffset) : 0;
@@ -126,7 +129,9 @@ public class MarqueeTextBlock : FrameworkElement
 			return;
 
 		var now = DateTime.UtcNow;
-		foreach (var marquee in ActiveInstances.ToArray())
+		RenderingSnapshot.Clear();
+		RenderingSnapshot.AddRange(ActiveInstances);
+		foreach (var marquee in RenderingSnapshot)
 			marquee.Advance(now);
 	}
 
@@ -211,10 +216,27 @@ public class MarqueeTextBlock : FrameworkElement
 
 	private double MaxOffset => Math.Max(0, _textWidth - ActualWidth);
 
-	private FormattedText CreateFormattedText()
+	protected override void OnPropertyChanged(DependencyPropertyChangedEventArgs e)
+	{
+		base.OnPropertyChanged(e);
+		if (e.Property == TextProperty ||
+			e.Property == ForegroundProperty ||
+			e.Property == FontSizeProperty ||
+			e.Property == FontFamilyProperty ||
+			e.Property == FontWeightProperty)
+		{
+			_formattedText = null;
+		}
+	}
+
+	private FormattedText GetFormattedText()
 	{
 		var dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
-		return new FormattedText(
+		if (_formattedText is not null && Math.Abs(_formattedTextPixelsPerDip - dpi) < 0.001)
+			return _formattedText;
+
+		_formattedTextPixelsPerDip = dpi;
+		_formattedText = new FormattedText(
 			Text ?? "",
 			CultureInfo.CurrentUICulture,
 			System.Windows.FlowDirection.LeftToRight,
@@ -222,6 +244,7 @@ public class MarqueeTextBlock : FrameworkElement
 			FontSize,
 			Foreground,
 			dpi);
+		return _formattedText;
 	}
 
 	private static void OnTextPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)

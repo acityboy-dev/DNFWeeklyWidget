@@ -21,6 +21,8 @@ public class CharacterRow : INotifyPropertyChanged
     private Thickness _compactImageMargin = new(-85, -78, 0, 0);
     private IReadOnlyList<SummaryLine> _summaryLines = [];
     private bool _isDragging;
+    private string _memo = "";
+    private bool _showMemo = true;
 
     public bool IsDropIndicator { get; set; }
     public bool IsDragging
@@ -41,6 +43,34 @@ public class CharacterRow : INotifyPropertyChanged
     public string JobName { get; set; } = "";
     public int Fame { get; set; }
     public string BaseSummary { get; set; } = "";
+    public string Memo
+    {
+        get => _memo;
+        set
+        {
+            var normalized = value?.Trim() ?? "";
+            if (_memo == normalized)
+                return;
+
+            _memo = normalized;
+            OnPropertyChanged(nameof(Memo));
+            OnPropertyChanged(nameof(ShowMemoArea));
+        }
+    }
+    public bool ShowMemo
+    {
+        get => _showMemo;
+        set
+        {
+            if (_showMemo == value)
+                return;
+
+            _showMemo = value;
+            OnPropertyChanged(nameof(ShowMemo));
+            OnPropertyChanged(nameof(ShowMemoArea));
+        }
+    }
+    public bool ShowMemoArea => ShowMemo && !string.IsNullOrWhiteSpace(Memo);
     public CharacterWeeklyStatus? WeeklyStatus { get; set; }
     public string JobSummary
     {

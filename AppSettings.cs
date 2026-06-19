@@ -30,6 +30,9 @@ public class AppSettings
 	public int AutoRefreshIntervalMinutes { get; set; } = 30;
 	public bool ShowInTaskbar { get; set; }
 	public bool EnableUserDataCache { get; set; } = true;
+	public bool ShowCardMemos { get; set; } = true;
+	public bool HideRaidContents { get; set; }
+	public bool AutoHideRaidContents { get; set; }
 	public int Columns { get; set; } = 4;
 	public double? WindowLeft { get; set; }
 	public double? WindowTop { get; set; }
@@ -136,7 +139,8 @@ public class AppSettings
 				Id = Guid.NewGuid().ToString("N"),
 				Name = "기본",
 				Characters = Characters ?? new List<SavedCharacter>(),
-				CachedCards = CachedCards ?? new List<CachedCharacterCard>()
+				CachedCards = CachedCards ?? new List<CachedCharacterCard>(),
+				CardMemos = new List<CardMemoEntry>()
 			});
 		}
 
@@ -148,6 +152,7 @@ public class AppSettings
 				preset.Name = "프리셋";
 			preset.Characters ??= new List<SavedCharacter>();
 			preset.CachedCards ??= new List<CachedCharacterCard>();
+			preset.CardMemos ??= new List<CardMemoEntry>();
 		}
 
 		if (string.IsNullOrWhiteSpace(ActivePresetId) ||
@@ -251,6 +256,7 @@ public class CardEntryPreset : INotifyPropertyChanged
 	}
 	public List<SavedCharacter> Characters { get; set; } = new();
 	public List<CachedCharacterCard> CachedCards { get; set; } = new();
+	public List<CardMemoEntry> CardMemos { get; set; } = new();
 
 	[JsonIgnore]
 	public bool IsEditing
@@ -272,4 +278,11 @@ public class CardEntryPreset : INotifyPropertyChanged
 	{
 		PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 	}
+}
+
+public class CardMemoEntry
+{
+	public string ServerId { get; set; } = "cain";
+	public string CharacterName { get; set; } = "";
+	public string Memo { get; set; } = "";
 }

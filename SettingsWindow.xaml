@@ -247,6 +247,9 @@
 										  FontSize="15"
 										  DisplayMemberPath="Label"
 										  SelectedValuePath="Value"
+										  Margin="0 0 0 12"/>
+								<CheckBox x:Name="ShowCardMemosBox"
+										  Content="카드 메모 표시"
 										  Margin="0 0 0 18"/>
 								<TextBlock Text="카드/줄"
 										   Foreground="{DynamicResource TertiaryTextBrush}"
@@ -308,6 +311,10 @@
 									   FontSize="12"
 									   FontWeight="SemiBold"
 									   Margin="0 0 0 8"/>
+							<CheckBox x:Name="AutoHideRaidContentsBox"
+									  Content="레이드 오픈 전 자동 미표시"
+									  ToolTip="목요일 06:00부터 토요일 06:00 전까지 레이드 콘텐츠를 자동으로 숨깁니다."
+									  Margin="0 0 0 10"/>
 							<UniformGrid Columns="2">
 								<CheckBox x:Name="BakalRaidBox" Content="바칼" Margin="0 0 10 10"/>
 								<CheckBox x:Name="HardMistRaidBox" Content="하드 안개신" Margin="0 0 0 10"/>

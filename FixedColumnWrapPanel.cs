@@ -10,7 +10,7 @@ namespace DNFWeeklyWidget;
 
 public class FixedColumnWrapPanel : WpfPanel
 {
-	private const int BufferRows = 2;
+	private const int BufferRows = 4;
 	private const double DefaultEstimatedRowHeight = 220.0;
 
 	public static readonly DependencyProperty ColumnsProperty =
